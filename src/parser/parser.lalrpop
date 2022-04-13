@@ -1,0 +1,243 @@
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::rc::Rc;
+
+use crate::module::*;
+use crate::types::VOID_TYPE;
+
+grammar;
+
+pub Module: Module<'input> = {
+    <mut m: Module> <f: FuncDef> => {
+        if m.functions.contains_key(f.0) {
+            // Function name already exists
+            if m.functions[f.0].contains_key(
+                &f
+                    .1
+                    .args
+                    .iter()
+                    .map(|param_def| Rc::clone(&param_def.param_type))
+                    .collect::<Vec<_>>()
+            ) {
+                // Exact signature already exists
+                panic!("Trying to redefine {} function", f.0);
+            } else {
+                // Add signature to HashMap of functions with same name but
+                // different parameter types
+                let mut hm = m.functions.remove(f.0).unwrap();
+                hm.insert(
+                    f
+                        .1
+                        .args
+                        .iter()
+                        .map(|param_def| Rc::clone(&param_def.param_type))
+                        .collect(),
+                    f.1
+                );
+                m.functions.insert(f.0, hm);
+            }
+        } else {
+            // New function name
+            m.functions.insert(f.0, HashMap::from([(
+                f
+                    .1
+                    .args
+                    .iter()
+                    .map(|param_def| Rc::clone(&param_def.param_type))
+                    .collect(),
+                f.1
+            )]));
+        }
+        m
+     },
+    <imps: Import*> <typs: Type*> =>
+        Module {
+            functions: HashMap::new(),
+            imports: imps.into_iter().collect(),
+            types: {
+                let mut ts = HashMap::new();
+                for (name, type_def) in typs.into_iter() {
+                    if ts.insert(name, type_def).is_some() {
+                        panic!("Trying to redefine type {}", name);
+                    }
+                }
+                ts
+            },
+        },
+};
+
+Import: (&'input str, Rc<String>) = {
+    "import" <m: ID> "as" <id: ID> => (id, Rc::new(m.to_string())),
+    "import" <m: ID>  => (m, Rc::new(m.to_string())),
+    "import" <m: ArenaString> "as" <id: ID> => (id, Rc::new(m.to_string())),
+};
+
+Type: (&'input str, Type<'input>) = {
+    "type" <name: ID> "{" <cases: TypeCaseDefs> "}" => (name, Type { cases: cases.into_iter().rev().collect() }),
+};
+
+TypeCaseDefs: Vec<TypeCase<'input>> = {
+    <c: TypeCaseDef> "," <mut cases: TypeCaseDefs> => { cases.push(c); cases },
+    <c: TypeCaseDef> => vec![c],
+    <c: TypeCaseDef> "," => vec![c],
+};
+
+TypeCaseDef: TypeCase<'input> = {
+    <name: ID> => TypeCase { name, fields: Vec::new() },
+    <name: ID> "(" <fields: Fields> ")" => TypeCase { name, fields },
+};
+
+Fields: Vec<Rc<String>> = {
+    <mut acc: Fields> "," <f: ID> => {acc.push(Rc::new(f.to_string())); acc},
+    <f: ID> => vec![Rc::new(f.to_string())],
+    => Vec::new(),
+};
+
+FuncDef: (&'input str, Function<'input>) = {
+    "fn" <name: ID> "(" <args: FuncDefArgs> ")" "->" <ret_type: ID> "=" <body: Expr>
+            => (name, Function {args, ret_type: Rc::new(ret_type.to_string()), body}),
+    "fn" <name: ID> "(" <args: FuncDefArgs> ")" "=" <body: Expr>
+            => (name, Function {args, ret_type: Rc::new(VOID_TYPE.to_string()), body}),
+};
+
+FuncDefArgs: Vec<ParamDef<'input>> = {
+    <mut acc: FuncDefArgs> "," <name: ID> ":" <param_type: ID>
+        => {acc.push(ParamDef {name, param_type: Rc::new(param_type.to_string())}); acc},
+    <name: ID> ":" <param_type: ID> => vec![ParamDef {name, param_type: Rc::new(param_type.to_string())}],
+    => Vec::new(),
+}
+
+Expr: Expr<'input> = {
+    "let" <id: ID> "=" <def: Match> ";" <body: Expr> => Expr::Let(id, Rc::new(def), Rc::new(body)),
+    Seq,
+};
+
+Seq: Expr<'input> = {
+    <e1: Match> ";" <e2: Expr> => Expr::Seq(Box::new(e1), Box::new(e2)),
+    Match,
+}
+
+Match: Expr<'input> = {
+    "match" <obj: Expr> "{" <mas: MatchArms> "}" => Expr::Match(Box::new(obj), mas),
+    If,
+};
+
+MatchArms: Vec<(MatchPattern<'input>, Rc<Expr<'input>>)> = {
+    <ma: MatchArm> => vec![ma],
+    <ma: MatchArm> "," => vec![ma],
+    <ma: MatchArm> "," <mut mas: MatchArms> => {mas.push(ma); mas},
+};
+
+MatchArm: (MatchPattern<'input>, Rc<Expr<'input>>) = {
+    <p: Pattern> "=>" <e: Expr> => (p, Rc::new(e)),
+};
+
+Pattern: MatchPattern<'input> = {
+    <l: Literal> => MatchPattern::Literal(l),
+    <var: ID> => MatchPattern::Var(var),
+    "_" => MatchPattern::Wildcard,
+    <ty_case: TypeCase> => MatchPattern::TypeCase(ty_case.0, ty_case.1, Vec::new()),
+    <ty_case: TypeCase> "(" <fields: TypeCasePatternFields> ")"
+            => MatchPattern::TypeCase(ty_case.0, ty_case.1, fields),
+};
+
+TypeCasePatternFields: Vec<MatchPattern<'input>> = {
+    <mut acc: TypeCasePatternFields> "," <field: Pattern> => {acc.push(field); acc},
+    <field: Pattern> => vec![field],
+    => Vec::new(),
+}
+
+If: Expr<'input> = {
+    "if" <cond: If> "then" <e1: If> "else" <e2: If> => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
+    "if" <cond: If> "then" "{" <e1: Expr> "}" "else" <e2: If>
+            => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
+    "if" <cond: If> "then" <e1: If> "else" "{" <e2: Expr> "}"
+            => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
+    "if" <cond: If> "then" "{" <e1: Expr> "}" "else" "{" <e2: Expr> "}"
+            => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
+    Lor,
+};
+
+Lor: Expr<'input> = {
+    <e1: Lor> "||" <e2: Land> =>
+        Expr::If(Box::new(e1), Rc::new(Expr::Const(Const::Bool(true))), Box::new(e2)),
+    Land,
+}
+
+Land: Expr<'input> = {
+    <e1: Land> "&&" <e2: Equality> =>
+        Expr::If(Box::new(e1), Rc::new(e2), Box::new(Expr::Const(Const::Bool(false)))),
+    Equality,
+}
+
+Equality: Expr<'input> = {
+    <e1: Equality> "==" <e2: Comp> => Expr::FuncCall(IdLoc::Here("eq"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Equality> "!=" <e2: Comp> => Expr::FuncCall(IdLoc::Here("neq"), vec![Rc::new(e1), Rc::new(e2)]),
+    Comp
+}
+
+Comp: Expr<'input> = {
+    <e1: Comp> "<" <e2: Addition> => Expr::FuncCall(IdLoc::Here("lt"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Comp> "<=" <e2: Addition> => Expr::FuncCall(IdLoc::Here("le"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Comp> ">" <e2: Addition> => Expr::FuncCall(IdLoc::Here("gt"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Comp> ">=" <e2: Addition> => Expr::FuncCall(IdLoc::Here("ge"), vec![Rc::new(e1), Rc::new(e2)]),
+    Addition
+}
+
+Addition: Expr<'input> = {
+    <e1: Addition> "+" <e2: Multiplication> => Expr::FuncCall(IdLoc::Here("add"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Addition> "-" <e2: Multiplication> => Expr::FuncCall(IdLoc::Here("sub"), vec![Rc::new(e1), Rc::new(e2)]),
+    Multiplication,
+};
+
+Multiplication: Expr<'input> = {
+    <e1: Multiplication> "*" <e2: Unary> => Expr::FuncCall(IdLoc::Here("mul"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Multiplication> "/" <e2: Unary> => Expr::FuncCall(IdLoc::Here("div"), vec![Rc::new(e1), Rc::new(e2)]),
+    <e1: Multiplication> "%" <e2: Unary> => Expr::FuncCall(IdLoc::Here("mod"), vec![Rc::new(e1), Rc::new(e2)]),
+    Unary,
+};
+
+Unary: Expr<'input> = {
+    "-" <e: Term> => Expr::FuncCall(IdLoc::Here("neg"), vec![Rc::new(e)]),
+    "!" <e: Term> => Expr::FuncCall(IdLoc::Here("not"), vec![Rc::new(e)]),
+    Term,
+}
+
+Term: Expr<'input> = {
+    <l: Literal> => Expr::Const(l),
+    <name:ID> "(" <params: FuncCallArgs> ")"
+            => Expr::FuncCall(IdLoc::Here(name), params.into_iter().map(|param| Rc::new(param)).collect()),
+    <module:ID> "::" <name:ID> "(" <params: FuncCallArgs> ")"
+            => Expr::FuncCall(IdLoc::Other(module, name), params.into_iter().map(|param| Rc::new(param)).collect()),
+    <ty_case: TypeCase> => Expr::TypeCase(ty_case.0, ty_case.1, Vec::new()),
+    <ty_case: TypeCase> "(" <params: FuncCallArgs> ")"
+            => Expr::TypeCase(ty_case.0, ty_case.1, params),
+    <v:ID> => Expr::Var(v),
+    "(" <Expr> ")",
+};
+
+Literal: Const = {
+    <n:Num> => Const::Int(n),
+    "true" => Const::Bool(true),
+    "false" => Const::Bool(false),
+    <s: ArenaString> => Const::Str(replace_escape_characters(s.to_string())),
+}
+
+FuncCallArgs: Vec<Expr<'input>> = {
+    <mut acc: FuncCallArgs> "," <param: Expr> => {acc.push(param); acc},
+    <param: Expr> => vec![param],
+    => Vec::new(),
+}
+
+Num: u32 = <s: r"[0-9]+"> => u32::from_str(s).unwrap();
+ID: &'input str = <id: r"[A-Za-z_][0-9A-Za-z_]*"> => id;
+ArenaString: &'input str = <s: r#""[^"]*""#> => &s[1..(s.len()-1)];
+TypeCase: (&'input str, &'input str) = <ty: ID> "." <case: ID> => (ty, case);
+
+match {
+    r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
+    r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
+    r"/\*([^*]|(\*+[^*/]))*\*+/" => { }, // Skip `/* ... */ comments`
+} else {
+   _
+}

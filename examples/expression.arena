@@ -1,0 +1,7 @@
+fn main() -> Int =
+    let then_val = 1;
+    let else_val = 2;
+    if 1 == 2 then
+        (let x = 2;
+        x + 2 * (x+1)) + 23
+    else if 2 == 2 && true then then_val else else_val

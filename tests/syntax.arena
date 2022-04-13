@@ -1,0 +1,71 @@
+// Result:
+// NEW LINES
+// SPACING
+// PRECEDENCE
+// OPERATOR ASSOCIATIVITY IS WORKING
+// LET SEQUENCING
+
+fn main() =
+    new_lines();
+    spacing();
+    operator_precedence();
+    operator_associativity();
+    let_sequencing()
+
+fn operator_precedence() =
+    if false || 13 == -1 + 2 * (3 - -4) then
+        print("PRECEDENCE\n")
+    else
+        print("PRECEDENCE FAILED\n")
+
+fn operator_associativity() =
+    (print("OPERATOR "); 0) + (print("ASSOCIATIVITY "); 0);
+    (print("IS "); 0) * (print("WORKING"); 0);
+    print("\n")
+
+fn let_sequencing() =
+    if (let x = (let y = 2; 2+3+4; 5+6+7; y); x) == 2 then
+        print("LET SEQUENCING\n")
+    else
+        print("LET SEQUENCING FAILED\n")
+
+fn
+new_lines
+(
+
+
+)
+
+
+->
+
+
+i32
+=
+
+(
+
+
+print(
+
+
+"NEW LINES\n"
+)
+
+
+
+;
+
+
+
+0
+
+
+
+)
+
+
+
+
+fn 	   spacing   	    (   		      )	   	  -> i32  	  
+  =     		 	 	   (         print  (    "SPACING\n" 		)     ; 0   )

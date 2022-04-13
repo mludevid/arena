@@ -1,0 +1,16 @@
+// Result:
+// CORRECT
+
+fn main() =
+    if collatz(75) == 15 then print("CORRECT\n") else print("WRONG\n")
+
+fn collatz(n: i32) -> i32 = collatz_helper(n, 1)
+
+fn collatz_helper(n: i32, count: i32) -> i32 =
+    if n == 1 then
+        count
+    else
+        if n / 2 * 2 == n then // n % 2 == 0
+            collatz_helper(n/2, count+1)
+        else
+            collatz_helper(3*n+1, count+1)
