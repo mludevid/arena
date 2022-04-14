@@ -38,21 +38,21 @@ pub enum Expr<'input> {
     FuncCall(IdLoc<'input>, Vec<Rc<Expr<'input>>>),
     GetTypeCaseField(Rc<Expr<'input>>, &'input str, usize),
     If(Box<Expr<'input>>, Rc<Expr<'input>>, Box<Expr<'input>>),
-    IsTypeCase(Rc<Expr<'input>>, &'input str, &'input str),
+    IsTypeCase(Rc<Expr<'input>>, IdLoc<'input>, &'input str),
     Let(&'input str, Rc<Expr<'input>>, Rc<Expr<'input>>),
     Match(
         Box<Expr<'input>>,
         Vec<(MatchPattern<'input>, Rc<Expr<'input>>)>,
     ),
     Seq(Box<Expr<'input>>, Box<Expr<'input>>),
-    TypeCase(&'input str, &'input str, Vec<Expr<'input>>),
+    TypeCase(IdLoc<'input>, &'input str, Vec<Expr<'input>>),
     Var(&'input str),
 }
 
 #[derive(Debug)]
 pub enum MatchPattern<'input> {
     Literal(Const),
-    TypeCase(&'input str, &'input str, Vec<MatchPattern<'input>>),
+    TypeCase(IdLoc<'input>, &'input str, Vec<MatchPattern<'input>>),
     Var(&'input str),
     Wildcard,
 }
@@ -64,7 +64,7 @@ pub enum Const {
     Str(Rc<String>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum IdLoc<'input> {
     Here(&'input str),
     Other(&'input str, &'input str),

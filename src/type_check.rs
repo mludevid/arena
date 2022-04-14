@@ -324,9 +324,17 @@ fn type_check_expr<'input>(
                 vars,
                 ty_case,
             )?;
-            let type_id = type_ids[module_id]
-                .get(ty)
-                .ok_or(format!("Could not find type {}", ty))?;
+            let type_id = match ty {
+                IdLoc::Here(typ_name) => type_ids[module_id]
+                    .get(typ_name)
+                    .ok_or(format!("Type {} not found", typ_name))?,
+                IdLoc::Other(mod_name, typ_name) => match imports.get(mod_name) {
+                    Some(other_mod) => type_ids[other_mod]
+                        .get(typ_name)
+                        .ok_or(format!("Type {} not found", typ_name))?,
+                    None => Err(format!("Unresolved import: {}", mod_name))?,
+                },
+            };
             if typed_ty_case.expr_type.as_str() == type_id.as_str() {
                 if type_defs[type_id]
                     .cases
@@ -400,9 +408,17 @@ fn type_check_expr<'input>(
             }
         }
         Expr::TypeCase(typ, case, args) => {
-            let type_id = type_ids[module_id]
-                .get(typ)
-                .ok_or(format!("Type {} not found", typ))?;
+            let type_id = match typ {
+                IdLoc::Here(typ_name) => type_ids[module_id]
+                    .get(typ_name)
+                    .ok_or(format!("Type {} not found", typ_name))?,
+                IdLoc::Other(mod_name, typ_name) => match imports.get(mod_name) {
+                    Some(other_mod) => type_ids[other_mod]
+                        .get(typ_name)
+                        .ok_or(format!("Type {} not found", typ_name))?,
+                    None => Err(format!("Unresolved import: {}", mod_name))?,
+                },
+            };
             let type_def = &type_defs[type_id];
             let case_def = type_def
                 .cases
@@ -412,7 +428,7 @@ fn type_check_expr<'input>(
             if case_def.fields.len() != args.len() {
                 return Err(format!(
                     "{}.{} expects {} fields, got {}",
-                    typ,
+                    type_id.as_str(),
                     case,
                     case_def.fields.len(),
                     args.len()
@@ -437,10 +453,10 @@ fn type_check_expr<'input>(
                     )
                 })
                 .collect::<Result<Vec<_>, String>>()?; // TODO: Improve error handling by joining all Error Strings
-            let type_id = Rc::clone(&type_ids[module_id][typ]);
+            let ret_type = Rc::clone(&type_id);
             TypedExpr {
                 expr: BinExpr::TypeCase(Rc::clone(&type_id), case, checked_args),
-                expr_type: type_id,
+                expr_type: ret_type,
             }
         }
         Expr::Var(name) => match vars.get(name) {
@@ -670,7 +686,10 @@ fn get_condition_vars_pattern<'input>(
             Vec::new(),
         ),
         MatchPattern::TypeCase(ty, case, fields) => fields.into_iter().enumerate().fold(
-            (Expr::IsTypeCase(Rc::clone(&obj), ty, case), Vec::new()),
+            (
+                Expr::IsTypeCase(Rc::clone(&obj), ty.clone(), case),
+                Vec::new(),
+            ),
             |(acc_expr, mut acc_vars), (i, field)| {
                 let (cond, mut vars) = get_condition_vars_pattern(
                     Rc::new(Expr::GetTypeCaseField(Rc::clone(&obj), case, i)),

@@ -1,4 +1,5 @@
 arena
-target
-out*
+deploy_page.sh
 doc/book
+out*
+target

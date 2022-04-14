@@ -232,7 +232,10 @@ FuncCallArgs: Vec<Expr<'input>> = {
 Num: u32 = <s: r"[0-9]+"> => u32::from_str(s).unwrap();
 ID: &'input str = <id: r"[A-Za-z_][0-9A-Za-z_]*"> => id;
 ArenaString: &'input str = <s: r#""[^"]*""#> => &s[1..(s.len()-1)];
-TypeCase: (&'input str, &'input str) = <ty: ID> "." <case: ID> => (ty, case);
+TypeCase: (IdLoc<'input>, &'input str) = {
+    <ty: ID> "." <case: ID> => (IdLoc::Here(ty), case),
+    <m: ID> "::" <ty: ID> "." <case: ID> => (IdLoc::Other(m, ty), case),
+};
 
 match {
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified

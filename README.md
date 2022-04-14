@@ -6,6 +6,9 @@ Arena is a natively compiled functional programming language, that is being
 developed with the intend to benchmark and compare automatic garbage collection
 algorithms.
 
+The documentation of the language can be found
+[here](https://mludevid.github.io/arena/).
+
 ## Installation
 To build the project you will need a rust compiler. The easiest way to install
 it on Linux is to use the `rustup` tool:
