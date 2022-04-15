@@ -22,25 +22,34 @@ pub fn type_check<'input>(
         type_names.insert(unique_name, module_types);
     }
     // UNIFY ALL TYPES AND FIX FIELD TYPES
-    let mut all_types: HashMap<Rc<String>, Type> = HashMap::new();
+    let mut all_types: HashMap<Rc<String>, BinType> = HashMap::new();
     for (unique_name, module) in modules.iter() {
         for (name, t) in module.types.iter() {
             // TODO: Check that no type has VOID as a field
             all_types.insert(
                 Rc::clone(&type_names[unique_name][name]),
-                Type {
+                BinType {
                     cases: t
                         .cases
                         .iter()
-                        .map(|case| TypeCase {
-                            name: case.name,
-                            fields: case
-                                .fields
-                                .iter()
-                                .map(|f| get_unique_type_id(&type_names, unique_name, f))
-                                .collect(),
+                        .map(|case| {
+                            Ok(BinTypeCase {
+                                name: case.name,
+                                fields: case
+                                    .fields
+                                    .iter()
+                                    .map(|f| {
+                                        get_unique_type_id(
+                                            &type_names,
+                                            &module.imports,
+                                            unique_name,
+                                            f,
+                                        )
+                                    })
+                                    .collect::<Result<Vec<_>, String>>()?,
+                            })
                         })
-                        .collect(),
+                        .collect::<Result<Vec<_>, String>>()?,
                 },
             );
         }
@@ -48,12 +57,12 @@ pub fn type_check<'input>(
 
     // GENERATE UNIQUE FUNCTION NAMES:
     // function_names[module_id][function_name][parameter_types]
-    // function_defs[function_id]
+    // function_ret_types[function_id]
     let mut function_names: HashMap<
         &Rc<String>,
         HashMap<&str, HashMap<Vec<Rc<String>>, Rc<String>>>,
     > = HashMap::new();
-    let mut function_defs: HashMap<Rc<String>, &Function> = HashMap::new();
+    let mut function_ret_types: HashMap<Rc<String>, Rc<String>> = HashMap::new();
     for (unique_name, module) in modules.iter() {
         let mut module_function = HashMap::new();
         for (name, functions) in module.functions.iter() {
@@ -63,11 +72,14 @@ pub fn type_check<'input>(
                 polymorph_functions.insert(
                     signature
                         .iter()
-                        .map(|ty| get_unique_type_id(&type_names, unique_name, ty))
-                        .collect(),
+                        .map(|ty| get_unique_type_id(&type_names, &module.imports, unique_name, ty))
+                        .collect::<Result<Vec<_>, String>>()?,
                     Rc::clone(&function_id),
                 );
-                function_defs.insert(function_id, f);
+                function_ret_types.insert(
+                    function_id,
+                    get_unique_type_id(&type_names, &module.imports, unique_name, &f.ret_type)?,
+                );
             }
             module_function.insert(*name, polymorph_functions);
         }
@@ -81,15 +93,15 @@ pub fn type_check<'input>(
             for (signature, function) in functions.iter() {
                 let sig: Vec<Rc<String>> = signature
                     .iter()
-                    .map(|ty| get_unique_type_id(&type_names, unique_name, ty))
-                    .collect();
+                    .map(|ty| get_unique_type_id(&type_names, &module.imports, unique_name, ty))
+                    .collect::<Result<Vec<_>, String>>()?;
                 checked_functions.insert(
                     Rc::clone(&function_names[unique_name][name][&sig]),
                     type_check_function(
                         unique_name,
                         &module.imports,
                         &function_names,
-                        &function_defs,
+                        &function_ret_types,
                         &type_names,
                         &all_types,
                         function,
@@ -155,19 +167,21 @@ fn type_check_function<'input>(
     module_id: &Rc<String>,
     imports: &HashMap<&str, Rc<String>>,
     function_ids: &HashMap<&Rc<String>, HashMap<&'input str, HashMap<Vec<Rc<String>>, Rc<String>>>>,
-    function_defs: &HashMap<Rc<String>, &Function>,
+    function_ret_types: &HashMap<Rc<String>, Rc<String>>,
     type_ids: &HashMap<&Rc<String>, HashMap<&'input str, Rc<String>>>,
-    type_defs: &HashMap<Rc<String>, Type>,
+    type_defs: &HashMap<Rc<String>, BinType>,
     function: &Function<'input>,
 ) -> Result<BinFunction<'input>, String> {
     let args = function
         .args
         .iter()
-        .map(|arg| ParamDef {
-            name: arg.name,
-            param_type: get_unique_type_id(type_ids, module_id, &arg.param_type),
+        .map(|arg| {
+            Ok(BinParamDef {
+                name: arg.name,
+                param_type: get_unique_type_id(type_ids, imports, module_id, &arg.param_type)?,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
     let mut vars: HashMap<&'input str, Rc<String>> = HashMap::new();
     for arg in args.iter() {
         if arg.param_type.as_str() == VOID_TYPE {
@@ -180,13 +194,13 @@ fn type_check_function<'input>(
         module_id,
         imports,
         function_ids,
-        function_defs,
+        function_ret_types,
         type_ids,
         type_defs,
         &mut vars,
         &function.body,
     )?;
-    let ret_type = get_unique_type_id(type_ids, module_id, &function.ret_type);
+    let ret_type = get_unique_type_id(type_ids, imports, module_id, &function.ret_type)?;
     let checked_body = if ret_type.as_str() == VOID_TYPE {
         // Functions that return VOID will drop any value therefore it does not
         // have to be a void, it can be any value
@@ -205,9 +219,9 @@ fn type_check_expr<'input>(
     module_id: &Rc<String>,
     imports: &HashMap<&str, Rc<String>>,
     function_ids: &HashMap<&Rc<String>, HashMap<&'input str, HashMap<Vec<Rc<String>>, Rc<String>>>>,
-    function_defs: &HashMap<Rc<String>, &Function>,
+    function_ret_types: &HashMap<Rc<String>, Rc<String>>,
     type_ids: &HashMap<&Rc<String>, HashMap<&'input str, Rc<String>>>,
-    type_defs: &HashMap<Rc<String>, Type>,
+    type_defs: &HashMap<Rc<String>, BinType>,
     vars: &mut HashMap<&'input str, Rc<String>>,
     expr: &Expr<'input>,
 ) -> Result<TypedExpr<'input>, String> {
@@ -228,7 +242,7 @@ fn type_check_expr<'input>(
             module_id,
             imports,
             function_ids,
-            function_defs,
+            function_ret_types,
             type_ids,
             type_defs,
             vars,
@@ -240,7 +254,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -271,7 +285,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -282,7 +296,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -292,7 +306,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -318,7 +332,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -361,7 +375,7 @@ fn type_check_expr<'input>(
             module_id,
             imports,
             function_ids,
-            function_defs,
+            function_ret_types,
             type_ids,
             type_defs,
             vars,
@@ -373,7 +387,7 @@ fn type_check_expr<'input>(
             module_id,
             imports,
             function_ids,
-            function_defs,
+            function_ret_types,
             type_ids,
             type_defs,
             vars,
@@ -385,7 +399,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -395,7 +409,7 @@ fn type_check_expr<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -444,7 +458,7 @@ fn type_check_expr<'input>(
                             module_id,
                             imports,
                             function_ids,
-                            function_defs,
+                            function_ret_types,
                             type_ids,
                             type_defs,
                             vars,
@@ -475,9 +489,9 @@ fn type_check_func_call<'input>(
     module_id: &Rc<String>,
     imports: &HashMap<&str, Rc<String>>,
     function_ids: &HashMap<&Rc<String>, HashMap<&'input str, HashMap<Vec<Rc<String>>, Rc<String>>>>,
-    function_defs: &HashMap<Rc<String>, &Function>,
+    function_ret_types: &HashMap<Rc<String>, Rc<String>>,
     type_ids: &HashMap<&Rc<String>, HashMap<&'input str, Rc<String>>>,
-    type_defs: &HashMap<Rc<String>, Type>,
+    type_defs: &HashMap<Rc<String>, BinType>,
     vars: &mut HashMap<&'input str, Rc<String>>,
     id_loc: &IdLoc<'input>,
     args: &Vec<Rc<Expr<'input>>>,
@@ -489,7 +503,7 @@ fn type_check_func_call<'input>(
                 module_id,
                 imports,
                 function_ids,
-                function_defs,
+                function_ret_types,
                 type_ids,
                 type_defs,
                 vars,
@@ -512,9 +526,7 @@ fn type_check_func_call<'input>(
                     // There are some functions with this name. Check for matching signature
                     match functions.get(&arg_types) {
                         Some(function_id) => {
-                            let function = function_defs[function_id];
-                            let ret_type =
-                                get_unique_type_id(type_ids, module_id, &function.ret_type);
+                            let ret_type = Rc::clone(&function_ret_types[function_id]);
                             return Ok(TypedExpr {
                                 expr: BinExpr::FuncCall(Rc::clone(&function_id), type_checked_args),
                                 expr_type: ret_type,
@@ -545,8 +557,7 @@ fn type_check_func_call<'input>(
                         // There are some functions with this name. Check for matching signature
                         match functions.get(&arg_types) {
                             Some(function_id) => {
-                                let function = function_defs[function_id];
-                                let ret_type = Rc::clone(&function.ret_type);
+                                let ret_type = Rc::clone(&function_ret_types[function_id]);
                                 Ok(TypedExpr {
                                     expr: BinExpr::FuncCall(
                                         Rc::clone(function_id),
@@ -576,9 +587,9 @@ fn type_check_let<'input>(
     module_id: &Rc<String>,
     imports: &HashMap<&str, Rc<String>>,
     function_ids: &HashMap<&Rc<String>, HashMap<&'input str, HashMap<Vec<Rc<String>>, Rc<String>>>>,
-    function_defs: &HashMap<Rc<String>, &Function>,
+    function_ret_types: &HashMap<Rc<String>, Rc<String>>,
     type_ids: &HashMap<&Rc<String>, HashMap<&'input str, Rc<String>>>,
-    type_defs: &HashMap<Rc<String>, Type>,
+    type_defs: &HashMap<Rc<String>, BinType>,
     vars: &mut HashMap<&'input str, Rc<String>>,
     name: &'input str,
     definition: &Expr<'input>,
@@ -588,7 +599,7 @@ fn type_check_let<'input>(
         module_id,
         imports,
         function_ids,
-        function_defs,
+        function_ret_types,
         type_ids,
         type_defs,
         vars,
@@ -602,7 +613,7 @@ fn type_check_let<'input>(
         module_id,
         imports,
         function_ids,
-        function_defs,
+        function_ret_types,
         type_ids,
         type_defs,
         vars,
@@ -623,9 +634,9 @@ fn type_check_match<'input>(
     module_id: &Rc<String>,
     imports: &HashMap<&str, Rc<String>>,
     function_ids: &HashMap<&Rc<String>, HashMap<&'input str, HashMap<Vec<Rc<String>>, Rc<String>>>>,
-    function_defs: &HashMap<Rc<String>, &Function>,
+    function_ret_types: &HashMap<Rc<String>, Rc<String>>,
     type_ids: &HashMap<&Rc<String>, HashMap<&'input str, Rc<String>>>,
-    type_defs: &HashMap<Rc<String>, Type>,
+    type_defs: &HashMap<Rc<String>, BinType>,
     vars: &mut HashMap<&'input str, Rc<String>>,
     obj: &Box<Expr<'input>>,
     match_arms: &Vec<(MatchPattern<'input>, Rc<Expr<'input>>)>,
@@ -634,7 +645,7 @@ fn type_check_match<'input>(
         module_id,
         imports,
         function_ids,
-        function_defs,
+        function_ret_types,
         type_ids,
         type_defs,
         vars,
@@ -713,14 +724,25 @@ fn get_condition_vars_pattern<'input>(
 
 fn get_unique_type_id(
     type_ids: &HashMap<&Rc<String>, HashMap<&str, Rc<String>>>,
+    imports: &HashMap<&str, Rc<String>>,
     module_id: &Rc<String>,
-    ret_type: &Rc<String>,
-) -> Rc<String> {
-    Rc::clone(
-        type_ids[module_id]
-            .get(ret_type.as_str())
-            .unwrap_or(ret_type),
-    )
+    ty: &IdLoc,
+) -> Result<Rc<String>, String> {
+    match ty {
+        IdLoc::Here(type_name) => Ok(type_ids[module_id]
+            .get(type_name)
+            .map(|tn| Rc::clone(tn))
+            .unwrap_or(Rc::new(type_name.to_string()))),
+        IdLoc::Other(module_name, type_name) => {
+            let module_id = imports
+                .get(module_name)
+                .ok_or(format!("Could not resolve module {}", module_name))?;
+            let type_id = type_ids[module_id]
+                .get(type_name)
+                .ok_or(format!("Could not find type {}", type_name))?;
+            Ok(Rc::clone(type_id))
+        }
+    }
 }
 
 fn expect_type<'input>(

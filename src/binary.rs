@@ -1,19 +1,36 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::module::{Const, ParamDef, Type};
+use crate::module::Const;
 
 #[derive(Debug)]
 pub struct Binary<'input> {
     pub functions: HashMap<Rc<String>, BinFunction<'input>>,
-    pub types: HashMap<Rc<String>, Type<'input>>,
+    pub types: HashMap<Rc<String>, BinType<'input>>,
+}
+
+#[derive(Debug)]
+pub struct BinType<'input> {
+    pub cases: Vec<BinTypeCase<'input>>,
+}
+
+#[derive(Debug)]
+pub struct BinTypeCase<'input> {
+    pub name: &'input str,
+    pub fields: Vec<Rc<String>>,
 }
 
 #[derive(Debug)]
 pub struct BinFunction<'input> {
-    pub args: Vec<ParamDef<'input>>,
+    pub args: Vec<BinParamDef<'input>>,
     pub ret_type: Rc<String>,
     pub body: TypedExpr<'input>,
+}
+
+#[derive(Debug)]
+pub struct BinParamDef<'input> {
+    pub name: &'input str,
+    pub param_type: Rc<String>,
 }
 
 #[derive(Debug)]

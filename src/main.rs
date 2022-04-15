@@ -49,6 +49,7 @@ fn main() {
     codegen::codegen(typed_ast, cli.verbose || cli.print_llvm);
 
     let llc_output = Command::new("llc")
+        .arg("--relocation-model=pic")
         .arg("out.ll")
         .output()
         .expect("Failed to execute llc");
@@ -60,7 +61,6 @@ fn main() {
         )
     }
     let gcc_output = Command::new("gcc")
-        .arg("-static")
         .arg("out.s")
         .arg("-o")
         .arg("out")

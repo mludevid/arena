@@ -12,11 +12,9 @@ pub Module: Module<'input> = {
         if m.functions.contains_key(f.0) {
             // Function name already exists
             if m.functions[f.0].contains_key(
-                &f
-                    .1
-                    .args
+                &f.1.args
                     .iter()
-                    .map(|param_def| Rc::clone(&param_def.param_type))
+                    .map(|param_def| param_def.param_type.clone())
                     .collect::<Vec<_>>()
             ) {
                 // Exact signature already exists
@@ -30,7 +28,7 @@ pub Module: Module<'input> = {
                         .1
                         .args
                         .iter()
-                        .map(|param_def| Rc::clone(&param_def.param_type))
+                        .map(|param_def| param_def.param_type.clone())
                         .collect(),
                     f.1
                 );
@@ -43,7 +41,7 @@ pub Module: Module<'input> = {
                     .1
                     .args
                     .iter()
-                    .map(|param_def| Rc::clone(&param_def.param_type))
+                    .map(|param_def| param_def.param_type.clone())
                     .collect(),
                 f.1
             )]));
@@ -87,23 +85,23 @@ TypeCaseDef: TypeCase<'input> = {
     <name: ID> "(" <fields: Fields> ")" => TypeCase { name, fields },
 };
 
-Fields: Vec<Rc<String>> = {
-    <mut acc: Fields> "," <f: ID> => {acc.push(Rc::new(f.to_string())); acc},
-    <f: ID> => vec![Rc::new(f.to_string())],
+Fields: Vec<IdLoc<'input>> = {
+    <mut acc: Fields> "," <f: ID_LOC> => {acc.push(f); acc},
+    <f: ID_LOC> => vec![f],
     => Vec::new(),
 };
 
 FuncDef: (&'input str, Function<'input>) = {
-    "fn" <name: ID> "(" <args: FuncDefArgs> ")" "->" <ret_type: ID> "=" <body: Expr>
-            => (name, Function {args, ret_type: Rc::new(ret_type.to_string()), body}),
+    "fn" <name: ID> "(" <args: FuncDefArgs> ")" "->" <ret_type: ID_LOC> "=" <body: Expr>
+            => (name, Function {args, ret_type, body}),
     "fn" <name: ID> "(" <args: FuncDefArgs> ")" "=" <body: Expr>
-            => (name, Function {args, ret_type: Rc::new(VOID_TYPE.to_string()), body}),
+            => (name, Function {args, ret_type: IdLoc::Here(VOID_TYPE), body}),
 };
 
 FuncDefArgs: Vec<ParamDef<'input>> = {
-    <mut acc: FuncDefArgs> "," <name: ID> ":" <param_type: ID>
-        => {acc.push(ParamDef {name, param_type: Rc::new(param_type.to_string())}); acc},
-    <name: ID> ":" <param_type: ID> => vec![ParamDef {name, param_type: Rc::new(param_type.to_string())}],
+    <mut acc: FuncDefArgs> "," <name: ID> ":" <param_type: ID_LOC>
+        => {acc.push(ParamDef {name, param_type}); acc},
+    <name: ID> ":" <param_type: ID_LOC> => vec![ParamDef {name, param_type}],
     => Vec::new(),
 }
 
@@ -205,10 +203,8 @@ Unary: Expr<'input> = {
 
 Term: Expr<'input> = {
     <l: Literal> => Expr::Const(l),
-    <name:ID> "(" <params: FuncCallArgs> ")"
-            => Expr::FuncCall(IdLoc::Here(name), params.into_iter().map(|param| Rc::new(param)).collect()),
-    <module:ID> "::" <name:ID> "(" <params: FuncCallArgs> ")"
-            => Expr::FuncCall(IdLoc::Other(module, name), params.into_iter().map(|param| Rc::new(param)).collect()),
+    <id_loc: ID_LOC> "(" <args: FuncCallArgs> ")"
+            => Expr::FuncCall(id_loc, args.into_iter().map(|args| Rc::new(args)).collect()),
     <ty_case: TypeCase> => Expr::TypeCase(ty_case.0, ty_case.1, Vec::new()),
     <ty_case: TypeCase> "(" <params: FuncCallArgs> ")"
             => Expr::TypeCase(ty_case.0, ty_case.1, params),
@@ -232,9 +228,12 @@ FuncCallArgs: Vec<Expr<'input>> = {
 Num: u32 = <s: r"[0-9]+"> => u32::from_str(s).unwrap();
 ID: &'input str = <id: r"[A-Za-z_][0-9A-Za-z_]*"> => id;
 ArenaString: &'input str = <s: r#""[^"]*""#> => &s[1..(s.len()-1)];
+ID_LOC: IdLoc<'input> = {
+    <id: ID> => IdLoc::Here(id),
+    <m: ID> "::" <id: ID> => IdLoc::Other(m, id),
+}
 TypeCase: (IdLoc<'input>, &'input str) = {
-    <ty: ID> "." <case: ID> => (IdLoc::Here(ty), case),
-    <m: ID> "::" <ty: ID> "." <case: ID> => (IdLoc::Other(m, ty), case),
+    <id_loc: ID_LOC> "." <case: ID> => (id_loc, case),
 };
 
 match {

@@ -5,7 +5,7 @@ use std::rc::Rc;
 pub struct Module<'input> {
     pub imports: HashMap<&'input str, Rc<String>>,
     pub types: HashMap<&'input str, Type<'input>>,
-    pub functions: HashMap<&'input str, HashMap<Vec<Rc<String>>, Function<'input>>>,
+    pub functions: HashMap<&'input str, HashMap<Vec<IdLoc<'input>>, Function<'input>>>,
 }
 
 #[derive(Debug)]
@@ -16,20 +16,20 @@ pub struct Type<'input> {
 #[derive(Debug)]
 pub struct TypeCase<'input> {
     pub name: &'input str,
-    pub fields: Vec<Rc<String>>,
+    pub fields: Vec<IdLoc<'input>>,
 }
 
 #[derive(Debug)]
 pub struct Function<'input> {
     pub args: Vec<ParamDef<'input>>,
-    pub ret_type: Rc<String>,
+    pub ret_type: IdLoc<'input>,
     pub body: Expr<'input>,
 }
 
 #[derive(Debug)]
 pub struct ParamDef<'input> {
     pub name: &'input str,
-    pub param_type: Rc<String>,
+    pub param_type: IdLoc<'input>,
 }
 
 #[derive(Debug)]
@@ -64,7 +64,7 @@ pub enum Const {
     Str(Rc<String>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum IdLoc<'input> {
     Here(&'input str),
     Other(&'input str, &'input str),

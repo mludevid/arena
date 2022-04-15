@@ -75,9 +75,17 @@ pub fn resolve_import(current_file: &PathBuf, import: &str) -> PathBuf {
     fs::canonicalize(current_folder.join(&import_path)).unwrap_or_else(|_| {
         // Check at ~/.arena/lib:
         let home = std::env::var("HOME").expect("Could not get HOME directory");
-        let lib_folder = PathBuf::from(home).join(".arena/lib").join(import_path);
-        fs::canonicalize(&lib_folder)
-            .unwrap_or_else(|_| panic!("Could not resolve import path of {:?}", lib_folder))
+        let user_lib_folder = PathBuf::from(home).join(".arena/lib").join(&import_path);
+        fs::canonicalize(&user_lib_folder).unwrap_or_else(|_| {
+            let exe_path = std::env::current_exe().expect("Could not get executable path");
+            let lib_folder = PathBuf::from(exe_path)
+                .parent()
+                .expect("Could not get executable folder")
+                .join("lib")
+                .join(&import_path);
+            fs::canonicalize(&lib_folder)
+                .unwrap_or_else(|_| panic!("Could not resolve import path of {:?}", import))
+        })
     })
 }
 
