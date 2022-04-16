@@ -152,7 +152,7 @@ fn type_check_main<'input>(
                     expr_type: Rc::new(VOID_TYPE.to_string()),
                 }),
                 Box::new(TypedExpr {
-                    expr: BinExpr::Const(Const::Int(0)),
+                    expr: BinExpr::Const(Const::I32(0)),
                     expr_type: Rc::clone(&int_type),
                 }),
             ),
@@ -201,13 +201,7 @@ fn type_check_function<'input>(
         &function.body,
     )?;
     let ret_type = get_unique_type_id(type_ids, imports, module_id, &function.ret_type)?;
-    let checked_body = if ret_type.as_str() == VOID_TYPE {
-        // Functions that return VOID will drop any value therefore it does not
-        // have to be a void, it can be any value
-        typed_body
-    } else {
-        expect_type(ret_type.as_str(), typed_body)?
-    };
+    let checked_body = expect_type(ret_type.as_str(), typed_body)?;
     Ok(BinFunction {
         args,
         ret_type,
@@ -226,8 +220,12 @@ fn type_check_expr<'input>(
     expr: &Expr<'input>,
 ) -> Result<TypedExpr<'input>, String> {
     Ok(match expr {
-        Expr::Const(Const::Int(i)) => TypedExpr {
-            expr: BinExpr::Const(Const::Int(*i)),
+        Expr::Const(Const::U8(i)) => TypedExpr {
+            expr: BinExpr::Const(Const::U8(*i)),
+            expr_type: Rc::new(U8_TYPE.to_string()),
+        },
+        Expr::Const(Const::I32(i)) => TypedExpr {
+            expr: BinExpr::Const(Const::I32(*i)),
             expr_type: Rc::new(I32_TYPE.to_string()),
         },
         Expr::Const(Const::Bool(b)) => TypedExpr {
@@ -236,7 +234,11 @@ fn type_check_expr<'input>(
         },
         Expr::Const(Const::Str(s)) => TypedExpr {
             expr: BinExpr::Const(Const::Str(Rc::clone(s))),
-            expr_type: Rc::new(STRING_TYPE.to_string()),
+            expr_type: Rc::new(STR_TYPE.to_string()),
+        },
+        Expr::Const(Const::Void) => TypedExpr {
+            expr: BinExpr::Const(Const::Void),
+            expr_type: Rc::new(VOID_TYPE.to_string()),
         },
         Expr::FuncCall(id_loc, args) => type_check_func_call(
             module_id,
@@ -667,7 +669,7 @@ fn build_ifs_from_arms<'input>(
         )),
         Box::new(Expr::FuncCall(
             IdLoc::Here("exit"),
-            vec![Rc::new(Expr::Const(Const::Int(1)))],
+            vec![Rc::new(Expr::Const(Const::I32(1)))],
         )),
     );
     let ifs = match_arms.iter().fold(failed_expr, |acc, arm| {

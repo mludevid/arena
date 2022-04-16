@@ -5,7 +5,7 @@ build_debug () {
 }
 
 build_release () {
-    cargo build -r && cp target/debug/arena .
+    cargo build -r && cp target/release/arena .
 }
 
 if [ 0 -eq $# ]; then build_debug;

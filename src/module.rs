@@ -60,8 +60,10 @@ pub enum MatchPattern<'input> {
 #[derive(Clone, Debug)]
 pub enum Const {
     Bool(bool),
-    Int(u32),
+    U8(u8),
+    I32(i32),
     Str(Rc<String>),
+    Void,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

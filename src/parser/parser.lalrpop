@@ -112,6 +112,7 @@ Expr: Expr<'input> = {
 
 Seq: Expr<'input> = {
     <e1: Match> ";" <e2: Expr> => Expr::Seq(Box::new(e1), Box::new(e2)),
+    <e1: Match> ";" => Expr::Seq(Box::new(e1), Box::new(Expr::Const(Const::Void))),
     Match,
 }
 
@@ -131,6 +132,7 @@ MatchArm: (MatchPattern<'input>, Rc<Expr<'input>>) = {
 };
 
 Pattern: MatchPattern<'input> = {
+    <i: SignedInteger> => MatchPattern::Literal(i),
     <l: Literal> => MatchPattern::Literal(l),
     <var: ID> => MatchPattern::Var(var),
     "_" => MatchPattern::Wildcard,
@@ -146,12 +148,12 @@ TypeCasePatternFields: Vec<MatchPattern<'input>> = {
 }
 
 If: Expr<'input> = {
-    "if" <cond: If> "then" <e1: If> "else" <e2: If> => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
-    "if" <cond: If> "then" "{" <e1: Expr> "}" "else" <e2: If>
+    "if" <cond: Match> "then" <e1: Match> "else" <e2: Match> => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
+    "if" <cond: Match> "then" "{" <e1: Expr> "}" "else" <e2: Match>
             => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
-    "if" <cond: If> "then" <e1: If> "else" "{" <e2: Expr> "}"
+    "if" <cond: Match> "then" <e1: Match> "else" "{" <e2: Expr> "}"
             => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
-    "if" <cond: If> "then" "{" <e1: Expr> "}" "else" "{" <e2: Expr> "}"
+    "if" <cond: Match> "then" "{" <e1: Expr> "}" "else" "{" <e2: Expr> "}"
             => Expr::If(Box::new(cond), Rc::new(e1), Box::new(e2)),
     Lor,
 };
@@ -198,6 +200,7 @@ Multiplication: Expr<'input> = {
 Unary: Expr<'input> = {
     "-" <e: Term> => Expr::FuncCall(IdLoc::Here("neg"), vec![Rc::new(e)]),
     "!" <e: Term> => Expr::FuncCall(IdLoc::Here("not"), vec![Rc::new(e)]),
+    <i: SignedInteger> => Expr::Const(i),
     Term,
 }
 
@@ -212,8 +215,14 @@ Term: Expr<'input> = {
     "(" <Expr> ")",
 };
 
+SignedInteger: Const = {
+    <n: r"[-]?[0-9]+"> => Const::I32(i32::from_str(n).expect("Could not parse to i32")),
+    <n: r"[0-9]+u8"> => Const::U8(u8::from_str(&n[..n.len()-2]).expect("Could not parse to u8")),
+    <n: r##"'[0-9a-zA-Z !"#$%&'()*+,-./:;<=>?@\[\\\]^_`{|}~€¿ÀÁÂÃÄÇÉÈÊËÍÌÎÏÑÓÒÔÕÖÚÙÛÜßàáâäçèéêëìíîïñòóôõöùúûü]'"##>
+        => Const::U8(n.as_bytes()[1]),
+}
+
 Literal: Const = {
-    <n:Num> => Const::Int(n),
     "true" => Const::Bool(true),
     "false" => Const::Bool(false),
     <s: ArenaString> => Const::Str(replace_escape_characters(s.to_string())),
@@ -225,7 +234,6 @@ FuncCallArgs: Vec<Expr<'input>> = {
     => Vec::new(),
 }
 
-Num: u32 = <s: r"[0-9]+"> => u32::from_str(s).unwrap();
 ID: &'input str = <id: r"[A-Za-z_][0-9A-Za-z_]*"> => id;
 ArenaString: &'input str = <s: r#""[^"]*""#> => &s[1..(s.len()-1)];
 ID_LOC: IdLoc<'input> = {

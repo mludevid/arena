@@ -1,0 +1,36 @@
+type String {
+	Nil,
+	Cons(u8, String),
+}
+
+fn append(s1: String, s2: String) -> String = __append(s1, reverse(s2))
+
+fn __append(s1: String, s2: String) -> String = match s2 {
+	String.Nil => s1,
+	String.Cons(head, tail) => __append(String.Cons(head, s1), tail),
+}
+
+fn new() -> String = String.Nil
+
+fn new(s: str) -> String = __new(s, 0, String.Nil)
+
+fn __new(s: str, i: i32, acc: String) -> String = match char_at(s, i) {
+	0u8 => acc,
+	c => __new(s, i+1, String.Cons(c, acc)),
+}
+
+fn push(s: String, c: u8) -> String = String.Cons(c, s)
+
+fn print(s: String) = __print(reverse(s))
+
+fn __print(s: String) = match s {
+	String.Nil => print(""),
+	String.Cons(head, tail) => print(head); __print(tail)
+};
+
+fn reverse(s: String) -> String = __reverse(s, String.Nil)
+
+fn __reverse(s: String, acc: String) -> String = match s {
+	String.Nil => acc,
+	String.Cons(head, tail) => __reverse(tail, String.Cons(head, acc)),
+}

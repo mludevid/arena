@@ -6,10 +6,11 @@ use std::rc::Rc;
 use crate::binary::Binary;
 
 pub const I8_PTR_TYPE: &'static str = "i8*";
+pub const U8_TYPE: &'static str = "u8";
 pub const I32_TYPE: &'static str = "i32";
 pub const I64_TYPE: &'static str = "i64";
 pub const BOOL_TYPE: &'static str = "bool";
-pub const STRING_TYPE: &'static str = "String";
+pub const STR_TYPE: &'static str = "str";
 pub const VOID_TYPE: &'static str = "void";
 pub const EXIT_TYPE: &'static str = "$exit$";
 
@@ -22,10 +23,11 @@ pub fn type_to_llvm_type(
         "i8*" => unsafe {
             llvm::core::LLVMPointerType(llvm::core::LLVMInt8TypeInContext(context), 0)
         },
+        "u8" => unsafe { llvm::core::LLVMInt8TypeInContext(context) },
         "i32" => unsafe { llvm::core::LLVMInt32TypeInContext(context) },
         "i64" => unsafe { llvm::core::LLVMInt64TypeInContext(context) },
         "bool" => unsafe { llvm::core::LLVMInt1TypeInContext(context) },
-        "String" => {
+        "str" => {
             let int8_type = unsafe { llvm::core::LLVMInt8TypeInContext(context) };
             unsafe { llvm::core::LLVMPointerType(int8_type, 0) }
         }

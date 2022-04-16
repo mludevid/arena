@@ -120,16 +120,22 @@ fn build_const<'input>(cc: &CodegenContext, constant: &Const) -> *mut llvm::LLVM
                 llvm::core::LLVMConstInt(int1_type, 0, 0)
             }
         },
-        Int(i) => unsafe {
+        U8(i) => unsafe {
+            let int8_type =
+                type_to_llvm_type(cc.context, &cc.llvm_structs, &Rc::new(U8_TYPE.to_string()));
+            llvm::core::LLVMConstInt(int8_type, (*i as u32).into(), 0)
+        },
+        I32(i) => unsafe {
             let int32_type =
                 type_to_llvm_type(cc.context, &cc.llvm_structs, &Rc::new(I32_TYPE.to_string()));
-            llvm::core::LLVMConstInt(int32_type, (*i).into(), 0)
+            llvm::core::LLVMConstInt(int32_type, (*i as u32).into(), 0)
         },
         Str(s) => unsafe {
             let c_str = CString::new(s.as_str()).unwrap();
             let name = CString::new(".str").unwrap();
             llvm::core::LLVMBuildGlobalStringPtr(cc.builder, c_str.as_ptr(), name.as_ptr())
         },
+        Void => std::ptr::null_mut(),
     }
 }
 
