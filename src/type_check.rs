@@ -440,7 +440,7 @@ fn type_check_expr<'input>(
                 .cases
                 .iter()
                 .find(|def| def.name == *case)
-                .expect("Could not find type case definition");
+                .ok_or(format!("Could not find type case definition of {}", *case))?;
             if case_def.fields.len() != args.len() {
                 return Err(format!(
                     "{}.{} expects {} fields, got {}",

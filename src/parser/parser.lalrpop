@@ -216,7 +216,12 @@ Term: Expr<'input> = {
 };
 
 SignedInteger: Const = {
-    <n: r"[-]?[0-9]+"> => Const::I32(i32::from_str(n).expect("Could not parse to i32")),
+    <n: r"[0-9]+"> => Const::I32(i32::from_str(n).expect("Could not parse to i32")),
+    "-" <n: r"[0-9]+"> => {
+        let mut int_string = "-".to_string();
+        int_string.push_str(n);
+        Const::I32(i32::from_str(int_string.as_str()).expect("Could not parse to i32"))
+    },
     <n: r"[0-9]+u8"> => Const::U8(u8::from_str(&n[..n.len()-2]).expect("Could not parse to u8")),
     <n: r##"'[0-9a-zA-Z !"#$%&'()*+,-./:;<=>?@\[\\\]^_`{|}~€¿ÀÁÂÃÄÇÉÈÊËÍÌÎÏÑÓÒÔÕÖÚÙÛÜßàáâäçèéêëìíîïñòóôõöùúûü]'"##>
         => Const::U8(n.as_bytes()[1]),
