@@ -5,13 +5,12 @@ use std::rc::Rc;
 
 use crate::binary::Binary;
 
-pub const I8_PTR_TYPE: &'static str = "i8*";
 pub const U8_TYPE: &'static str = "u8";
 pub const I32_TYPE: &'static str = "i32";
-pub const I64_TYPE: &'static str = "i64";
 pub const BOOL_TYPE: &'static str = "bool";
 pub const STR_TYPE: &'static str = "str";
 pub const VOID_TYPE: &'static str = "void";
+pub const VOID_PTR_TYPE: &'static str = "i8*"; // LLVM does not support void*
 pub const EXIT_TYPE: &'static str = "$exit$";
 
 pub fn type_to_llvm_type(
@@ -67,19 +66,6 @@ pub fn create_structs(
         unsafe { llvm::core::LLVMStructSetBody(llvm_struct, fields.as_mut_ptr(), fields_len, 0) };
     }
     ret
-}
-
-pub fn get_struct_size(
-    llvm_structs: &HashMap<Rc<String>, *mut llvm::LLVMType>,
-    ty: &Rc<String>,
-) -> *mut llvm::LLVMValue {
-    unsafe {
-        llvm::core::LLVMSizeOf(
-            *llvm_structs
-                .get(ty)
-                .expect("Could not find llvm struct to get size"),
-        )
-    }
 }
 
 pub fn get_case_id_indices(

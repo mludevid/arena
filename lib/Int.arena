@@ -1,0 +1,29 @@
+import String
+
+fn toString(i: i32) -> String::String =
+	if i < 0 then
+		String::append(String::new("-"), __toString(i))
+	else
+		__toString(-i)
+
+fn __toString(i: i32) -> String::String = // for i <= 0
+	if i > -10 then
+		__digitToString(-i)
+	else
+		String::append(__toString(i/10), __digitToString(-(i%10)))
+
+fn __digitToString(n: i32) -> String::String =
+	match n {
+		0 => String::new("0"),
+		1 => String::new("1"),
+		2 => String::new("2"),
+		3 => String::new("3"),
+		4 => String::new("4"),
+		5 => String::new("5"),
+		6 => String::new("6"),
+		7 => String::new("7"),
+		8 => String::new("8"),
+		9 => String::new("9"),
+		_ => String::new("*"),
+	}
+

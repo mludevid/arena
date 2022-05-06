@@ -1,0 +1,57 @@
+import Option
+import Int
+import String
+
+type I32 {
+	Nil,
+	Cons(i32, I32),
+}
+
+fn contains(list: I32, i: i32) -> bool =
+	match list {
+		I32.Nil => false,
+		I32.Cons(head, tail) => head == i || contains(tail, i)
+	}
+
+fn get(list: I32, i: i32) -> Option::I32 =
+	match list {
+		I32.Nil => Option::I32.None,
+		I32.Cons(head, tail) => if i == 0 then Option::I32.Some(head) else get(tail, i - 1),
+	}
+
+fn new(len: i32) -> I32 = if len == 0 then I32.Nil else I32.Cons(0, new(len - 1))
+
+fn newI32() -> I32 = I32.Nil
+
+fn toString(list: I32) -> String::String =
+	let res = String::new("[");
+	let res = String::append(res, __toString(reverse(list)));
+	String::append(res, String::new("]"))
+
+fn __toString(list: I32) -> String::String = 
+	match list {
+		I32.Nil => String::new(""),
+		I32.Cons(value, I32.Nil) => Int::toString(value),
+		I32.Cons(value, tail) => String::append(
+			String::append(Int::toString(value), String::new(", ")),
+			__toString(tail)),
+	}
+
+fn push(list: I32, value: i32) -> I32 =
+	I32.Cons(value, list)
+
+fn reverse(list: I32) -> I32 = __reverse(list, I32.Nil)
+
+fn __reverse(list: I32, acc: I32) -> I32 = match list {
+	I32.Nil => acc,
+	I32.Cons(head, tail) => __reverse(tail, I32.Cons(head, acc)),
+}
+
+fn set(list: I32, index: i32, element: i32) -> I32 = match list {
+	I32.Nil => I32.Nil,
+	I32.Cons(v, tail) =>
+		if index == 0 then
+			I32.Cons(element, tail)
+		else
+			I32.Cons(v, set(tail, index - 1, element)),
+}

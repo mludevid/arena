@@ -61,9 +61,11 @@ fn main() {
         )
     }
     let gcc_output = Command::new("gcc")
+        .arg("-Wextra")
         .arg("out.s")
         .arg("-o")
         .arg("out")
+        .arg("libarena.a")
         .output()
         .expect("Failed to execute gcc");
     if !gcc_output.status.success() {

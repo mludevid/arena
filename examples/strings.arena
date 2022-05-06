@@ -1,9 +1,9 @@
-import string
+import String
 
 fn main() =
-	let s1 = string::new(greeting());
-	let s2 = string::new("How you doin?");
-	string::print(string::append(s1, s2));
+	let s1 = String::new(greeting());
+	let s2 = String::new("How you doin?");
+	String::print(String::append(s1, s2));
 	print("\n");
 
 fn greeting() -> str = "Hello World!\n"

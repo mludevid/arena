@@ -3,3 +3,4 @@ deploy_page.sh
 doc/book
 out*
 target
+libarena.a

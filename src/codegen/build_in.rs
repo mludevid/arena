@@ -4,9 +4,7 @@ use std::rc::Rc;
 
 use crate::codegen::function::create_func_call;
 use crate::codegen::CodegenContext;
-use crate::types::{
-    BOOL_TYPE, EXIT_TYPE, I32_TYPE, I64_TYPE, I8_PTR_TYPE, STR_TYPE, U8_TYPE, VOID_TYPE,
-};
+use crate::types::{BOOL_TYPE, EXIT_TYPE, I32_TYPE, STR_TYPE, U8_TYPE, VOID_PTR_TYPE, VOID_TYPE};
 
 macro_rules! enum_str {
     ($( #[$cfgs:meta] )*
@@ -14,18 +12,18 @@ macro_rules! enum_str {
         $($variant:ident),*,
     }) => {
         $( #[$cfgs] )*
-        enum $name {
+        pub enum $name {
             $($variant),*
         }
 
         impl $name {
-            fn as_str(&self) -> &'static str {
+            pub fn as_str(&self) -> &'static str {
                 match self {
                     $($name::$variant => stringify!($variant)),*
                 }
             }
 
-            fn from_str(s: &str) -> Self {
+            pub fn from_str(s: &str) -> Self {
                 match s {
                     $(stringify!($variant) => $name::$variant),*,
                     _ => panic!("ENUM VARIANT NOT FOUND: {}", s),
@@ -38,13 +36,14 @@ macro_rules! enum_str {
 enum_str!(
     #[allow(non_camel_case_types)]
     enum BuildIn {
+        init_stack,
+        stack_alloc,
         print_str,
         print_u8,
         print_i32,
         printf,
         char_at,
         exit,
-        malloc,
         eq_i32,
         eq_u8,
         eq_bool,
@@ -223,13 +222,15 @@ pub fn get_build_in_func_call(
     cc: &CodegenContext,
     func_id: &Rc<String>,
     computed_params: &mut Vec<*mut llvm::LLVMValue>,
+    sp: *mut llvm::LLVMValue,
 ) -> Option<*mut llvm::LLVMValue> {
     match BuildIn::from_str(func_id.as_str()) {
-        BuildIn::printf | BuildIn::exit | BuildIn::malloc => None,
+        BuildIn::printf | BuildIn::exit | BuildIn::init_stack | BuildIn::stack_alloc => None,
         BuildIn::print_str => Some(create_func_call(
             cc,
             &Rc::new(BuildIn::printf.as_str().to_string()),
             computed_params,
+            sp,
         )),
         BuildIn::print_i32 => {
             let c_str = CString::new("%d").unwrap();
@@ -243,6 +244,7 @@ pub fn get_build_in_func_call(
                 cc,
                 &Rc::new(BuildIn::printf.as_str().to_string()),
                 &mut params,
+                sp,
             ))
         }
         BuildIn::print_u8 => {
@@ -257,6 +259,7 @@ pub fn get_build_in_func_call(
                 cc,
                 &Rc::new(BuildIn::printf.as_str().to_string()),
                 &mut params,
+                sp,
             ))
         }
         BuildIn::char_at => unsafe {
@@ -405,7 +408,8 @@ pub fn get_linked_func_signature(func_id: &Rc<String>) -> (Vec<&'static str>, &'
     match BuildIn::from_str(func_id.as_str()) {
         BuildIn::printf => (vec![STR_TYPE], I32_TYPE, true),
         BuildIn::exit => (vec![I32_TYPE], EXIT_TYPE, false),
-        BuildIn::malloc => (vec![I64_TYPE], I8_PTR_TYPE, false),
+        BuildIn::init_stack => (Vec::new(), VOID_PTR_TYPE, false),
+        BuildIn::stack_alloc => (vec![VOID_PTR_TYPE], VOID_PTR_TYPE, false),
         BuildIn::char_at
         | BuildIn::print_str
         | BuildIn::print_u8
