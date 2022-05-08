@@ -4,7 +4,9 @@ use std::rc::Rc;
 
 use crate::codegen::function::create_func_call;
 use crate::codegen::CodegenContext;
-use crate::types::{BOOL_TYPE, EXIT_TYPE, I32_TYPE, STR_TYPE, U8_TYPE, VOID_PTR_TYPE, VOID_TYPE};
+use crate::types::{
+    BOOL_TYPE, EXIT_TYPE, I32_TYPE, I64_TYPE, STR_TYPE, U8_TYPE, VOID_PTR_TYPE, VOID_TYPE,
+};
 
 macro_rules! enum_str {
     ($( #[$cfgs:meta] )*
@@ -38,6 +40,7 @@ enum_str!(
     enum BuildIn {
         init_stack,
         stack_alloc,
+        type_alloc,
         print_str,
         print_u8,
         print_i32,
@@ -225,7 +228,11 @@ pub fn get_build_in_func_call(
     sp: *mut llvm::LLVMValue,
 ) -> Option<*mut llvm::LLVMValue> {
     match BuildIn::from_str(func_id.as_str()) {
-        BuildIn::printf | BuildIn::exit | BuildIn::init_stack | BuildIn::stack_alloc => None,
+        BuildIn::printf
+        | BuildIn::exit
+        | BuildIn::init_stack
+        | BuildIn::stack_alloc
+        | BuildIn::type_alloc => None,
         BuildIn::print_str => Some(create_func_call(
             cc,
             &Rc::new(BuildIn::printf.as_str().to_string()),
@@ -410,6 +417,7 @@ pub fn get_linked_func_signature(func_id: &Rc<String>) -> (Vec<&'static str>, &'
         BuildIn::exit => (vec![I32_TYPE], EXIT_TYPE, false),
         BuildIn::init_stack => (Vec::new(), VOID_PTR_TYPE, false),
         BuildIn::stack_alloc => (vec![VOID_PTR_TYPE], VOID_PTR_TYPE, false),
+        BuildIn::type_alloc => (vec![I64_TYPE], VOID_PTR_TYPE, false),
         BuildIn::char_at
         | BuildIn::print_str
         | BuildIn::print_u8

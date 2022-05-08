@@ -16,6 +16,14 @@ pub struct Cli {
     #[clap(parse(from_os_str), value_name = "FILE")]
     pub file_path: PathBuf,
 
+    /// Name of executable
+    #[clap(short, parse(from_os_str), value_name = "file")]
+    pub o: Option<PathBuf>,
+
+    /// Keep temporary .ll and .s files
+    #[clap(short, long)]
+    pub keep_temporaries: bool,
+
     /// Print Code, AST and LLVM Code
     #[clap(short, long)]
     pub verbose: bool,
@@ -78,7 +86,7 @@ pub fn resolve_import(current_file: &PathBuf, import: &str) -> PathBuf {
         let user_lib_folder = PathBuf::from(home).join(".arena/lib").join(&import_path);
         fs::canonicalize(&user_lib_folder).unwrap_or_else(|_| {
             let exe_path = std::env::current_exe().expect("Could not get executable path");
-            let lib_folder = PathBuf::from(exe_path)
+            let lib_folder = exe_path
                 .parent()
                 .expect("Could not get executable folder")
                 .join("lib")

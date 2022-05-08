@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Command;
+use std::str::FromStr;
 
 mod binary;
 mod codegen;
@@ -11,6 +13,14 @@ mod types;
 
 fn main() {
     let (codes, cli) = input::input();
+
+    let executable_name = std::env::current_dir().unwrap().join(match cli.o {
+        None => PathBuf::from_str("out").unwrap(),
+        Some(exe) => exe,
+    });
+    let ll_path = executable_name.with_extension("ll");
+    let s_path = executable_name.with_extension("s");
+
     if cli.verbose {
         println!("CODE:");
         for (path, code) in &codes {
@@ -46,11 +56,18 @@ fn main() {
         println!("TYPE-CHECKED AST:\n{:#?}", typed_ast);
     }
 
-    codegen::codegen(typed_ast, cli.verbose || cli.print_llvm);
+    codegen::codegen(
+        typed_ast,
+        ll_path.to_str().unwrap(),
+        cli.verbose || cli.print_llvm,
+    );
 
+    let mut llc_o_arg = "-o=".to_string();
+    llc_o_arg.push_str(s_path.to_str().unwrap());
     let llc_output = Command::new("llc")
         .arg("--relocation-model=pic")
-        .arg("out.ll")
+        .arg(llc_o_arg.as_str())
+        .arg(ll_path.to_str().unwrap())
         .output()
         .expect("Failed to execute llc");
     if !llc_output.status.success() {
@@ -60,12 +77,17 @@ fn main() {
             String::from_utf8_lossy(&llc_output.stderr)
         )
     }
+    let exe_path = std::env::current_exe().expect("Could not get executable path");
+    let libarena_path = exe_path
+        .parent()
+        .expect("Could not get executable folder")
+        .join("libarena.a");
     let gcc_output = Command::new("gcc")
         .arg("-Wextra")
-        .arg("out.s")
+        .arg(s_path.to_str().unwrap())
         .arg("-o")
-        .arg("out")
-        .arg("libarena.a")
+        .arg(executable_name.to_str().unwrap())
+        .arg(libarena_path.to_str().unwrap())
         .output()
         .expect("Failed to execute gcc");
     if !gcc_output.status.success() {
@@ -74,5 +96,30 @@ fn main() {
             gcc_output.status.code(),
             String::from_utf8_lossy(&gcc_output.stderr)
         )
+    }
+
+    if !cli.keep_temporaries {
+        let rm_output_1 = Command::new("rm")
+            .arg(ll_path.to_str().unwrap())
+            .output()
+            .expect("Failed to execute rm");
+        if !rm_output_1.status.success() {
+            panic!(
+                "rm failed with error code {:?}. Output:\n{}",
+                rm_output_1.status.code(),
+                String::from_utf8_lossy(&rm_output_1.stderr)
+            )
+        }
+        let rm_output_2 = Command::new("rm")
+            .arg(s_path.to_str().unwrap())
+            .output()
+            .expect("Failed to execute rm");
+        if !rm_output_2.status.success() {
+            panic!(
+                "rm failed with error code {:?}. Output:\n{}",
+                rm_output_2.status.code(),
+                String::from_utf8_lossy(&rm_output_2.stderr)
+            )
+        }
     }
 }

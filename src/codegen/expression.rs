@@ -31,7 +31,7 @@ pub fn build_expression<'input>(
         GetTypeCaseField(obj, case, field_index) => {
             let obj_ptr = build_expression(cc, current_func, vars, current_sp, obj);
 
-            let (_, case_fields) = get_case_id_indices(
+            let (_, case_fields, _) = get_case_id_case_indices_pointer_indices(
                 cc.context,
                 &cc.binary,
                 &cc.llvm_structs,
@@ -71,7 +71,7 @@ pub fn build_expression<'input>(
         IsCase(obj, case) => {
             let obj_ptr = build_expression(cc, current_func, vars, current_sp, obj);
 
-            let (case_id, _) = get_case_id_indices(
+            let (case_id, _, _) = get_case_id_case_indices_pointer_indices(
                 cc.context,
                 &cc.binary,
                 &cc.llvm_structs,
@@ -337,17 +337,25 @@ fn build_type_case<'input>(
     fields: &'input Vec<TypedExpr<'input>>,
 ) -> *mut llvm::LLVMValue {
     let llvm_type = type_to_llvm_type(cc.context, &cc.llvm_structs, ty);
-    let malloc_name = CString::new(format!("{}*", ty)).unwrap();
+    let size = get_struct_size(&cc.llvm_structs, ty);
+    let malloc_ret = create_func_call(
+        cc,
+        &Rc::new("type_alloc".to_string()),
+        &mut vec![size],
+        current_sp,
+    );
+    let struct_name = CString::new(format!("{}*", ty)).unwrap();
     let heap_ptr = unsafe {
-        llvm::core::LLVMBuildMalloc(
-            cc.builder,
-            llvm::core::LLVMGetElementType(llvm_type),
-            malloc_name.as_ptr(),
-        )
+        llvm::core::LLVMBuildBitCast(cc.builder, malloc_ret, llvm_type, struct_name.as_ptr())
     };
 
-    let (id, field_indices) =
-        get_case_id_indices(cc.context, &cc.binary, &cc.llvm_structs, ty, case);
+    let (id, field_indices, pointer_indices) = get_case_id_case_indices_pointer_indices(
+        cc.context,
+        &cc.binary,
+        &cc.llvm_structs,
+        ty,
+        case,
+    );
 
     // Save enum id:
     let int32_type =
@@ -364,6 +372,22 @@ fn build_type_case<'input>(
         );
         llvm::core::LLVMBuildStore(cc.builder, id, ptr)
     };
+
+    // Save NULL to all pointer fields:
+    for f in pointer_indices {
+        let field_ptr = CString::new("field_ptr".to_string()).unwrap();
+        unsafe {
+            let ptr = llvm::core::LLVMBuildGEP(
+                cc.builder,
+                heap_ptr,
+                vec![zero, f].as_mut_ptr(),
+                2,
+                field_ptr.as_ptr(),
+            );
+            let ptr_type = llvm::core::LLVMGetElementType(llvm::core::LLVMTypeOf(ptr));
+            llvm::core::LLVMBuildStore(cc.builder, llvm::core::LLVMConstNull(ptr_type), ptr);
+        }
+    }
 
     // Save fields:
     for (expr, index) in fields.iter().zip(field_indices.into_iter()) {

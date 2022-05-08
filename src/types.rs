@@ -7,6 +7,7 @@ use crate::binary::Binary;
 
 pub const U8_TYPE: &'static str = "u8";
 pub const I32_TYPE: &'static str = "i32";
+pub const I64_TYPE: &'static str = "i64";
 pub const BOOL_TYPE: &'static str = "bool";
 pub const STR_TYPE: &'static str = "str";
 pub const VOID_TYPE: &'static str = "void";
@@ -57,9 +58,30 @@ pub fn create_structs(
     for (name, t) in binary.types.iter() {
         let llvm_struct = *ret.get(name).unwrap();
         let mut fields = vec![unsafe { llvm::core::LLVMInt32TypeInContext(context) }];
+        // First push user defined types
         for case in t.cases.iter() {
             for f in case.fields.iter() {
-                fields.push(type_to_llvm_type(context, &ret, f));
+                let first_char = f
+                    .as_str()
+                    .chars()
+                    .next()
+                    .expect("Could not get first char of type");
+                if first_char == '$' {
+                    fields.push(type_to_llvm_type(context, &ret, f));
+                }
+            }
+        }
+        // Then push build in types
+        for case in t.cases.iter() {
+            for f in case.fields.iter() {
+                let first_char = f
+                    .as_str()
+                    .chars()
+                    .next()
+                    .expect("Could not get first char of type");
+                if first_char != '$' {
+                    fields.push(type_to_llvm_type(context, &ret, f));
+                }
             }
         }
         let fields_len = fields.len().try_into().unwrap();
@@ -68,43 +90,111 @@ pub fn create_structs(
     ret
 }
 
-pub fn get_case_id_indices(
+pub fn get_struct_size(
+    llvm_structs: &HashMap<Rc<String>, *mut llvm::LLVMType>,
+    ty: &Rc<String>,
+) -> *mut llvm::LLVMValue {
+    unsafe {
+        llvm::core::LLVMSizeOf(
+            *llvm_structs
+                .get(ty)
+                .expect("Could not find llvm struct to get size"),
+        )
+    }
+}
+
+pub fn get_case_id_case_indices_pointer_indices(
     context: *mut llvm::LLVMContext,
     binary: &Binary,
     llvm_structs: &HashMap<Rc<String>, *mut llvm::LLVMType>,
     ty: &Rc<String>,
     case: &str,
-) -> (*mut llvm::LLVMValue, Vec<*mut llvm::LLVMValue>) {
+) -> (
+    *mut llvm::LLVMValue,
+    Vec<*mut llvm::LLVMValue>,
+    Vec<*mut llvm::LLVMValue>,
+) {
     let type_def = binary
         .types
         .get(ty)
         .expect("Could not find type def in binary");
-    let (mut case_index, mut case_field_indices): (Option<_>, Option<Vec<_>>) = (None, None);
-    let mut field_count: u64 = 1;
+    let mut type_pointers_count: u64 = 0;
+    for c in type_def.cases.iter() {
+        for field in c.fields.iter() {
+            let first_char = field
+                .as_str()
+                .chars()
+                .next()
+                .expect("Could not get first char of type");
+            if first_char == '$' {
+                // User defined type
+                type_pointers_count += 1;
+            }
+        }
+    }
+    let (mut case_index, mut case_field_indices, mut type_pointer_indices): (
+        Option<u64>,
+        Vec<u64>,
+        Vec<*mut llvm::LLVMValue>,
+    ) = (None, Vec::new(), Vec::new());
+    let mut non_pointer_count: u64 = type_pointers_count + 1;
+    let mut pointer_count: u64 = 1;
     for (i, c) in type_def.cases.iter().enumerate() {
         if c.name == case {
             case_index = Some(i.try_into().unwrap());
-            let case_field_count: u64 = c.fields.len().try_into().unwrap();
-            case_field_indices = Some((field_count..(field_count + case_field_count)).collect());
+            for field in c.fields.iter() {
+                let first_char = field
+                    .as_str()
+                    .chars()
+                    .next()
+                    .expect("Could not get first char of type");
+                if first_char == '$' {
+                    // User defined type
+                    case_field_indices.push(pointer_count);
+                    pointer_count += 1;
+                } else {
+                    case_field_indices.push(non_pointer_count);
+                    non_pointer_count += 1;
+                }
+            }
             break;
         } else {
-            let case_field_count: u64 = c.fields.len().try_into().unwrap();
-            field_count += case_field_count;
+            for field in c.fields.iter() {
+                let first_char = field
+                    .as_str()
+                    .chars()
+                    .next()
+                    .expect("Could not get first char of type");
+                if first_char == '$' {
+                    // User defined type
+                    pointer_count += 1;
+                } else {
+                    non_pointer_count += 1;
+                }
+            }
         }
     }
+
     let int32_type = type_to_llvm_type(context, llvm_structs, &Rc::new(I32_TYPE.to_string()));
+
+    for i in 1..(type_pointers_count + 1) {
+        type_pointer_indices.push(unsafe { llvm::core::LLVMConstInt(int32_type, i, 0) });
+    }
+
+    type_pointers_count <<= 16;
     (
         unsafe {
             llvm::core::LLVMConstInt(
                 int32_type,
-                case_index.expect("Internal error: Could not find case index"),
+                case_index.expect("Internal error: Could not find case index")
+                    | type_pointers_count,
                 0,
             )
         },
         case_field_indices
-            .unwrap()
             .into_iter()
             .map(|i| unsafe { llvm::core::LLVMConstInt(int32_type, i, 0) })
             .collect::<Vec<_>>(),
+        type_pointer_indices,
     )
 }

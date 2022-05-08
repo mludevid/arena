@@ -11,12 +11,12 @@ use std::rc::Rc;
 
 use crate::binary::Binary;
 
-pub fn codegen(binary: Binary, print_llvm_code: bool) {
+pub fn codegen(binary: Binary, out_ll: &str, print_llvm_code: bool) {
     let (context, builder) = llvm_setup();
 
     let module = module::build_module(context, builder, binary);
 
-    llvm_cleanup(context, module, builder, print_llvm_code);
+    llvm_cleanup(context, module, builder, out_ll, print_llvm_code);
 }
 
 fn llvm_setup() -> (*mut llvm::LLVMContext, *mut llvm::LLVMBuilder) {
@@ -31,10 +31,11 @@ fn llvm_cleanup(
     context: *mut llvm::LLVMContext,
     module: *mut llvm::LLVMModule,
     builder: *mut llvm::LLVMBuilder,
+    out_ll: &str,
     print_llvm_code: bool,
 ) {
     let stdout = CString::new("/dev/stdout").unwrap();
-    let out_ll = CString::new("out.ll").unwrap();
+    let out_ll = CString::new(out_ll).unwrap();
     unsafe {
         if print_llvm_code {
             llvm::core::LLVMPrintModuleToFile(module, stdout.as_ptr(), ptr::null_mut());
