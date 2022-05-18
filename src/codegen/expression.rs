@@ -7,12 +7,13 @@ use crate::binary::BinExpr::*;
 use crate::binary::*;
 use crate::codegen::build_in::BuildIn::stack_alloc;
 use crate::codegen::function::create_func_call;
+use crate::codegen::garbage_collection::GC;
 use crate::codegen::CodegenContext;
 use crate::module::Const;
 use crate::module::Const::*;
 use crate::types::*;
 
-pub fn build_expression<'input>(
+pub fn build_expression<'input, Gc: GC>(
     cc: &CodegenContext,
     current_func: *mut llvm::LLVMValue,
     vars: &mut HashMap<&'input str, *mut llvm::LLVMValue>,
@@ -24,14 +25,14 @@ pub fn build_expression<'input>(
         FuncCall(func_id, params) => {
             let mut computed_params = params
                 .into_iter()
-                .map(|param| build_expression(cc, current_func, vars, current_sp, &param))
+                .map(|param| build_expression::<Gc>(cc, current_func, vars, current_sp, &param))
                 .collect::<Vec<_>>();
-            create_func_call(cc, func_id, &mut computed_params, current_sp)
+            create_func_call::<Gc>(cc, func_id, &mut computed_params, current_sp)
         }
         GetTypeCaseField(obj, case, field_index) => {
-            let obj_ptr = build_expression(cc, current_func, vars, current_sp, obj);
+            let obj_ptr = build_expression::<Gc>(cc, current_func, vars, current_sp, obj);
 
-            let (_, case_fields, _) = get_case_id_case_indices_pointer_indices(
+            let (_, case_fields, _) = get_case_id_case_indices_pointer_indices::<Gc>(
                 cc.context,
                 &cc.binary,
                 &cc.llvm_structs,
@@ -44,7 +45,7 @@ pub fn build_expression<'input>(
             let zero = unsafe { llvm::core::LLVMConstInt(int32_type, 0, 0) };
             let case_field_ptr_name = CString::new("case_field_ptr".to_string()).unwrap();
             let case_field_name = CString::new("case_field".to_string()).unwrap();
-            unsafe {
+            let case_field = unsafe {
                 let case_field_ptr = llvm::core::LLVMBuildGEP(
                     cc.builder,
                     obj_ptr,
@@ -53,11 +54,23 @@ pub fn build_expression<'input>(
                     case_field_ptr_name.as_ptr(),
                 );
                 llvm::core::LLVMBuildLoad(cc.builder, case_field_ptr, case_field_name.as_ptr())
+            };
+            let type_first_char = ast
+                .expr_type
+                .as_str()
+                .chars()
+                .next()
+                .expect("Could not get first char of type");
+            if type_first_char == '$' {
+                // User defined type:
+                Gc::type_ptr_access(cc, case_field);
             }
+            Gc::type_ptr_drop(cc, obj_ptr);
+            case_field
         }
         If(cond, b1, b2) => {
             let ret_type = type_to_llvm_type(cc.context, &cc.llvm_structs, &ast.expr_type);
-            build_if(
+            build_if::<Gc>(
                 cc,
                 current_func,
                 vars,
@@ -69,9 +82,9 @@ pub fn build_expression<'input>(
             )
         }
         IsCase(obj, case) => {
-            let obj_ptr = build_expression(cc, current_func, vars, current_sp, obj);
+            let obj_ptr = build_expression::<Gc>(cc, current_func, vars, current_sp, obj);
 
-            let (case_id, _, _) = get_case_id_case_indices_pointer_indices(
+            let (case_id, _, _) = get_case_id_case_indices_pointer_indices::<Gc>(
                 cc.context,
                 &cc.binary,
                 &cc.llvm_structs,
@@ -83,38 +96,52 @@ pub fn build_expression<'input>(
             let int32_type =
                 type_to_llvm_type(cc.context, &cc.llvm_structs, &Rc::new(I32_TYPE.to_string()));
             let zero = unsafe { llvm::core::LLVMConstInt(int32_type, 0, 0) };
+            let case_id_index =
+                unsafe { llvm::core::LLVMConstInt(int32_type, Gc::get_type_header_length(), 0) };
             let case_id_name = CString::new("case_id".to_string()).unwrap();
             unsafe {
                 let id_ptr = llvm::core::LLVMBuildGEP(
                     cc.builder,
                     obj_ptr,
-                    vec![zero, zero].as_mut_ptr(),
+                    vec![zero, case_id_index].as_mut_ptr(),
                     2,
                     case_id_name.as_ptr(),
                 );
                 let found_case_id =
                     llvm::core::LLVMBuildLoad(cc.builder, id_ptr, case_id_name.as_ptr());
                 let cmp_name = CString::new("same_case".to_string()).unwrap();
-                llvm::core::LLVMBuildICmp(
+                let cmp = llvm::core::LLVMBuildICmp(
                     cc.builder,
                     llvm::LLVMIntPredicate::LLVMIntEQ,
                     case_id,
                     found_case_id,
                     cmp_name.as_ptr(),
-                )
+                );
+                Gc::type_ptr_drop(cc, obj_ptr);
+                cmp
             }
         }
-        Let(id, def, body) => build_let(cc, current_func, vars, current_sp, id, &def, &body),
+        Let(id, def, body) => build_let::<Gc>(cc, current_func, vars, current_sp, id, &def, &body),
         Seq(e1, e2) => {
-            build_expression(cc, current_func, vars, current_sp, &e1);
-            build_expression(cc, current_func, vars, current_sp, &e2)
+            let e1_res = build_expression::<Gc>(cc, current_func, vars, current_sp, &e1);
+            let type_first_char = e1
+                .expr_type
+                .as_str()
+                .chars()
+                .next()
+                .expect("Could not get first char of type");
+            if type_first_char == '$' {
+                // User defined type:
+                Gc::type_ptr_drop(cc, e1_res);
+            }
+            build_expression::<Gc>(cc, current_func, vars, current_sp, &e2)
         }
         TypeCase(ty, c, fields) => {
-            build_type_case(cc, current_func, vars, current_sp, ty, c, fields)
+            build_type_case::<Gc>(cc, current_func, vars, current_sp, ty, c, fields)
         }
         Var(id) => {
             let var_name = CString::new(*id).unwrap();
-            unsafe {
+            let var = unsafe {
                 llvm::core::LLVMBuildLoad(
                     cc.builder,
                     vars.get(id)
@@ -122,7 +149,18 @@ pub fn build_expression<'input>(
                         .clone(),
                     var_name.as_ptr(),
                 )
+            };
+            let type_first_char = ast
+                .expr_type
+                .as_str()
+                .chars()
+                .next()
+                .expect("Could not get first char of type");
+            if type_first_char == '$' {
+                // User defined type:
+                Gc::type_ptr_access(cc, var);
             }
+            var
         }
     }
 }
@@ -160,7 +198,7 @@ fn build_const<'input>(cc: &CodegenContext, constant: &Const) -> *mut llvm::LLVM
     }
 }
 
-fn build_if<'input>(
+fn build_if<'input, Gc: GC>(
     cc: &CodegenContext,
     current_func: *mut llvm::LLVMValue,
     vars: &mut HashMap<&'input str, *mut llvm::LLVMValue>,
@@ -188,12 +226,12 @@ fn build_if<'input>(
     };
 
     // Condition:
-    let condition = build_expression(cc, current_func, vars, current_sp, cond);
+    let condition = build_expression::<Gc>(cc, current_func, vars, current_sp, cond);
     unsafe { llvm::core::LLVMBuildCondBr(cc.builder, condition, then_block, else_block) };
 
     // Then:
     unsafe { llvm::core::LLVMPositionBuilderAtEnd(cc.builder, then_block) };
-    let then_result = build_expression(cc, current_func, vars, current_sp, then_ast);
+    let then_result = build_expression::<Gc>(cc, current_func, vars, current_sp, then_ast);
     let incoming_block_then = unsafe { llvm::core::LLVMGetInsertBlock(cc.builder) };
     if then_ast.expr_type.as_str() != EXIT_TYPE {
         unsafe { llvm::core::LLVMBuildBr(cc.builder, continuation_block) };
@@ -203,7 +241,7 @@ fn build_if<'input>(
 
     // Else:
     unsafe { llvm::core::LLVMPositionBuilderAtEnd(cc.builder, else_block) };
-    let else_result = build_expression(cc, current_func, vars, current_sp, else_ast);
+    let else_result = build_expression::<Gc>(cc, current_func, vars, current_sp, else_ast);
     let incoming_block_else = unsafe { llvm::core::LLVMGetInsertBlock(cc.builder) };
     if else_ast.expr_type.as_str() != EXIT_TYPE {
         unsafe { llvm::core::LLVMBuildBr(cc.builder, continuation_block) };
@@ -265,7 +303,7 @@ fn build_if<'input>(
     }
 }
 
-fn build_let<'input>(
+fn build_let<'input, Gc: GC>(
     cc: &CodegenContext,
     current_func: *mut llvm::LLVMValue,
     vars: &mut HashMap<&'input str, *mut llvm::LLVMValue>,
@@ -283,7 +321,7 @@ fn build_let<'input>(
         .expect("Could not get first char of type");
     let (variable, new_sp) = if type_first_char == '$' {
         // User defined types start with $ and go on the arena stack
-        let sp = create_func_call(
+        let sp = create_func_call::<Gc>(
             cc,
             &Rc::new(stack_alloc.as_str().to_string()),
             &mut vec![current_sp],
@@ -316,10 +354,18 @@ fn build_let<'input>(
             )
         }
     };
-    let definition = build_expression(cc, current_func, vars, current_sp, def_ast);
+    let definition = build_expression::<Gc>(cc, current_func, vars, current_sp, def_ast);
     unsafe { llvm::core::LLVMBuildStore(cc.builder, definition, variable) };
     let old_def = vars.insert(id, variable);
-    let res = build_expression(cc, current_func, vars, new_sp, body_ast);
+    let res = build_expression::<Gc>(cc, current_func, vars, new_sp, body_ast);
+    if type_first_char == '$' {
+        // User defined type:
+        // Gc::type_ptr_drop(cc, definition);
+        // let stack_ptr =
+        // unsafe { llvm::core::LLVMBuildLoad(cc.builder, variable, var_name.as_ptr()) };
+        let obj_ptr = unsafe { llvm::core::LLVMBuildLoad(cc.builder, variable, var_name.as_ptr()) };
+        Gc::type_ptr_drop(cc, obj_ptr);
+    }
     match old_def {
         None => vars.remove(&id),
         Some(def) => vars.insert(id, def),
@@ -327,7 +373,7 @@ fn build_let<'input>(
     res
 }
 
-fn build_type_case<'input>(
+fn build_type_case<'input, Gc: GC>(
     cc: &CodegenContext,
     current_func: *mut llvm::LLVMValue,
     vars: &mut HashMap<&'input str, *mut llvm::LLVMValue>,
@@ -338,7 +384,7 @@ fn build_type_case<'input>(
 ) -> *mut llvm::LLVMValue {
     let llvm_type = type_to_llvm_type(cc.context, &cc.llvm_structs, ty);
     let size = get_struct_size(&cc.llvm_structs, ty);
-    let malloc_ret = create_func_call(
+    let malloc_ret = create_func_call::<Gc>(
         cc,
         &Rc::new("type_alloc".to_string()),
         &mut vec![size],
@@ -349,7 +395,9 @@ fn build_type_case<'input>(
         llvm::core::LLVMBuildBitCast(cc.builder, malloc_ret, llvm_type, struct_name.as_ptr())
     };
 
-    let (id, field_indices, pointer_indices) = get_case_id_case_indices_pointer_indices(
+    Gc::init_header(cc, heap_ptr);
+
+    let (id, field_indices, pointer_indices) = get_case_id_case_indices_pointer_indices::<Gc>(
         cc.context,
         &cc.binary,
         &cc.llvm_structs,
@@ -361,12 +409,14 @@ fn build_type_case<'input>(
     let int32_type =
         type_to_llvm_type(cc.context, &cc.llvm_structs, &Rc::new(I32_TYPE.to_string()));
     let zero = unsafe { llvm::core::LLVMConstInt(int32_type, 0, 0) };
+    let case_id_index =
+        unsafe { llvm::core::LLVMConstInt(int32_type, Gc::get_type_header_length(), 0) };
     let save_id_name = CString::new("case_id".to_string()).unwrap();
     unsafe {
         let ptr = llvm::core::LLVMBuildGEP(
             cc.builder,
             heap_ptr,
-            vec![zero, zero].as_mut_ptr(),
+            vec![zero, case_id_index].as_mut_ptr(),
             2,
             save_id_name.as_ptr(),
         );
@@ -391,7 +441,7 @@ fn build_type_case<'input>(
 
     // Save fields:
     for (expr, index) in fields.iter().zip(field_indices.into_iter()) {
-        let field = build_expression(cc, current_func, vars, current_sp, expr);
+        let field = build_expression::<Gc>(cc, current_func, vars, current_sp, expr);
         let field_ptr = CString::new("field_ptr".to_string()).unwrap();
         unsafe {
             let ptr = llvm::core::LLVMBuildGEP(

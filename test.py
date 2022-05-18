@@ -37,7 +37,7 @@ def run(cmd):
     return proc.returncode, stdout, stderr
 
 def get_execution_result(path):
-    ret_code, stdout, stderr = run(["./arena", path])
+    ret_code, stdout, stderr = run(["arena", path])
     if ret_code != 0:
         print("\nCompilation of " + str(path) + " failed. StdErr:\n")
         print(str(stderr) + "\n")

@@ -3,6 +3,7 @@ use std::ffi::CString;
 use std::rc::Rc;
 
 use crate::codegen::function::create_func_call;
+use crate::codegen::garbage_collection::GC;
 use crate::codegen::CodegenContext;
 use crate::types::{
     BOOL_TYPE, EXIT_TYPE, I32_TYPE, I64_TYPE, STR_TYPE, U8_TYPE, VOID_PTR_TYPE, VOID_TYPE,
@@ -40,7 +41,12 @@ enum_str!(
     enum BuildIn {
         init_stack,
         stack_alloc,
+        close_stack,
         type_alloc,
+        type_free,
+        close_heap,
+        arc_ptr_access,
+        arc_drop_ptr,
         print_str,
         print_u8,
         print_i32,
@@ -221,7 +227,7 @@ pub fn get_build_in_signature(
     }
 }
 
-pub fn get_build_in_func_call(
+pub fn get_build_in_func_call<Gc: GC>(
     cc: &CodegenContext,
     func_id: &Rc<String>,
     computed_params: &mut Vec<*mut llvm::LLVMValue>,
@@ -232,8 +238,13 @@ pub fn get_build_in_func_call(
         | BuildIn::exit
         | BuildIn::init_stack
         | BuildIn::stack_alloc
-        | BuildIn::type_alloc => None,
-        BuildIn::print_str => Some(create_func_call(
+        | BuildIn::close_stack
+        | BuildIn::type_alloc
+        | BuildIn::type_free
+        | BuildIn::close_heap
+        | BuildIn::arc_ptr_access
+        | BuildIn::arc_drop_ptr => None,
+        BuildIn::print_str => Some(create_func_call::<Gc>(
             cc,
             &Rc::new(BuildIn::printf.as_str().to_string()),
             computed_params,
@@ -247,7 +258,7 @@ pub fn get_build_in_func_call(
             };
             let mut params = vec![s];
             params.append(computed_params);
-            Some(create_func_call(
+            Some(create_func_call::<Gc>(
                 cc,
                 &Rc::new(BuildIn::printf.as_str().to_string()),
                 &mut params,
@@ -262,7 +273,7 @@ pub fn get_build_in_func_call(
             };
             let mut params = vec![s];
             params.append(computed_params);
-            Some(create_func_call(
+            Some(create_func_call::<Gc>(
                 cc,
                 &Rc::new(BuildIn::printf.as_str().to_string()),
                 &mut params,
@@ -417,7 +428,12 @@ pub fn get_linked_func_signature(func_id: &Rc<String>) -> (Vec<&'static str>, &'
         BuildIn::exit => (vec![I32_TYPE], EXIT_TYPE, false),
         BuildIn::init_stack => (Vec::new(), VOID_PTR_TYPE, false),
         BuildIn::stack_alloc => (vec![VOID_PTR_TYPE], VOID_PTR_TYPE, false),
+        BuildIn::close_stack => (Vec::new(), VOID_TYPE, false),
         BuildIn::type_alloc => (vec![I64_TYPE], VOID_PTR_TYPE, false),
+        BuildIn::type_free => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
+        BuildIn::close_heap => (Vec::new(), VOID_TYPE, false),
+        BuildIn::arc_ptr_access => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
+        BuildIn::arc_drop_ptr => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
         BuildIn::char_at
         | BuildIn::print_str
         | BuildIn::print_u8

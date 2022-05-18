@@ -1,5 +1,6 @@
 use crate::binary::Binary;
 use crate::codegen::function;
+use crate::codegen::garbage_collection::GC;
 use crate::codegen::CodegenContext;
 use crate::types::create_structs;
 
@@ -7,7 +8,7 @@ use llvm_sys as llvm;
 use std::ffi::CString;
 use std::rc::Rc;
 
-pub fn build_module<'input>(
+pub fn build_module<'input, Gc: GC>(
     context: *mut llvm::LLVMContext,
     builder: *mut llvm::LLVMBuilder,
     binary: Binary<'input>,
@@ -15,7 +16,7 @@ pub fn build_module<'input>(
     unsafe {
         let module_name = CString::new("ArenaBinary").unwrap();
         let llvm_module = llvm::core::LLVMModuleCreateWithName(module_name.as_ptr());
-        let llvm_structs = create_structs(&binary, context);
+        let llvm_structs = create_structs::<Gc>(&binary, context);
         let cc = CodegenContext {
             binary,
             llvm_module,
@@ -33,7 +34,7 @@ pub fn build_module<'input>(
             .iter()
             .map(|arg| Rc::clone(&arg.param_type))
             .collect::<Vec<_>>();
-        function::init_build_function(
+        function::init_build_function::<Gc>(
             &cc,
             "main",
             args,

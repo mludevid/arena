@@ -11,6 +11,9 @@ mod parser;
 mod type_check;
 mod types;
 
+use crate::codegen::garbage_collection::{Spill, ARC};
+use crate::input::ClapGC;
+
 fn main() {
     let (codes, cli) = input::input();
 
@@ -56,11 +59,18 @@ fn main() {
         println!("TYPE-CHECKED AST:\n{:#?}", typed_ast);
     }
 
-    codegen::codegen(
-        typed_ast,
-        ll_path.to_str().unwrap(),
-        cli.verbose || cli.print_llvm,
-    );
+    match cli.gc {
+        Some(ClapGC::Spill) => codegen::codegen::<Spill>(
+            typed_ast,
+            ll_path.to_str().unwrap(),
+            cli.verbose || cli.print_llvm,
+        ),
+        None | Some(ClapGC::Arc) => codegen::codegen::<ARC>(
+            typed_ast,
+            ll_path.to_str().unwrap(),
+            cli.verbose || cli.print_llvm,
+        ),
+    };
 
     let mut llc_o_arg = "-o=".to_string();
     llc_o_arg.push_str(s_path.to_str().unwrap());

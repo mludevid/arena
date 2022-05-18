@@ -1,7 +1,8 @@
 use crate::binary::BinFunction;
-use crate::codegen::build_in::BuildIn::{init_stack, stack_alloc};
+use crate::codegen::build_in::BuildIn::{close_heap, close_stack, init_stack, stack_alloc};
 use crate::codegen::build_in::{get_build_in_func_call, get_linked_func_signature};
 use crate::codegen::expression::build_expression;
+use crate::codegen::garbage_collection::GC;
 use crate::codegen::CodegenContext;
 use crate::types::{type_to_llvm_type, VOID_PTR_TYPE, VOID_TYPE};
 
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::rc::Rc;
 
-pub fn create_func_call(
+pub fn create_func_call<Gc: GC>(
     cc: &CodegenContext,
     func_id: &Rc<String>,
     computed_params: &mut Vec<*mut llvm::LLVMValue>,
@@ -33,7 +34,7 @@ pub fn create_func_call(
             .iter()
             .map(|arg| Rc::clone(&arg.param_type))
             .collect::<Vec<_>>();
-        let new_func = init_build_function(
+        let new_func = init_build_function::<Gc>(
             cc,
             func_id.as_str(),
             args,
@@ -44,7 +45,7 @@ pub fn create_func_call(
         );
         append_func_call(cc, new_func, computed_params, sp)
     } else {
-        match get_build_in_func_call(cc, func_id, computed_params, sp) {
+        match get_build_in_func_call::<Gc>(cc, func_id, computed_params, sp) {
             Some(val) => val,
             None => {
                 // This *should* be a function that can be dynamically linked and is not yet
@@ -117,7 +118,7 @@ fn append_func_call(
     }
 }
 
-pub fn init_build_function<'input>(
+pub fn init_build_function<'input, Gc: GC>(
     cc: &'input CodegenContext,
     func_name: &str,
     args: &Vec<Rc<String>>,
@@ -127,11 +128,11 @@ pub fn init_build_function<'input>(
     is_main: bool,
 ) -> *mut llvm::LLVMValue {
     let llvm_func = init_function(cc, func_name, args, ret_type, is_var_arg, false, is_main);
-    build_function(cc, llvm_func, func_def, is_main);
+    build_function::<Gc>(cc, llvm_func, func_def, is_main);
     llvm_func
 }
 
-fn build_function<'input>(
+fn build_function<'input, Gc: GC>(
     cc: &'input CodegenContext,
     llvm_func: *mut llvm::LLVMValue,
     function: &'input BinFunction,
@@ -152,7 +153,7 @@ fn build_function<'input>(
     };
     create_entry(&cc, llvm_func);
     let mut sp = if is_main {
-        create_func_call(
+        create_func_call::<Gc>(
             cc,
             &Rc::new(init_stack.as_str().to_string()),
             &mut Vec::new(),
@@ -175,7 +176,7 @@ fn build_function<'input>(
             .expect("Could not get first char of param type");
         let (var, new_sp) = if type_first_char == '$' {
             // User defined types start with $ and go on the arena stack
-            let sp_ret = create_func_call(
+            let sp_ret = create_func_call::<Gc>(
                 cc,
                 &Rc::new(stack_alloc.as_str().to_string()),
                 &mut vec![sp],
@@ -212,7 +213,36 @@ fn build_function<'input>(
         unsafe { llvm::core::LLVMBuildStore(cc.builder, id, var) };
         vars.insert(param.name, var);
     }
-    let res = build_expression(&cc, llvm_func, &mut vars, sp, &function.body);
+    let res = build_expression::<Gc>(&cc, llvm_func, &mut vars, sp, &function.body);
+    for (i, param) in function.args.iter().enumerate() {
+        let id = unsafe {
+            llvm::core::LLVMGetParam(llvm_func, (i + parameter_index_offset).try_into().unwrap())
+        };
+        let type_first_char = param
+            .param_type
+            .as_str()
+            .chars()
+            .next()
+            .expect("Could not get first char of param type");
+        if type_first_char == '$' {
+            // User defined types start with $ and go on the arena stack
+            Gc::type_ptr_drop(cc, id);
+        }
+    }
+    if is_main {
+        create_func_call::<Gc>(
+            cc,
+            &Rc::new(close_stack.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+        create_func_call::<Gc>(
+            cc,
+            &Rc::new(close_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
     if function.ret_type.as_str() == VOID_TYPE {
         // If the return type of the function is void it should not return the
         // last value, it should drop it and return void instead

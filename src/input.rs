@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{ArgEnum, Parser};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fs;
@@ -15,6 +15,10 @@ pub struct Cli {
     /// Path of code to be compiled
     #[clap(parse(from_os_str), value_name = "FILE")]
     pub file_path: PathBuf,
+
+    //// GC algorithm
+    #[clap(arg_enum)]
+    pub gc: Option<ClapGC>,
 
     /// Name of executable
     #[clap(short, parse(from_os_str), value_name = "file")]
@@ -39,6 +43,18 @@ pub struct Cli {
     /// Print LLVM Code
     #[clap(long)]
     pub print_llvm: bool,
+}
+
+/// GC algoriorithm used
+#[derive(ArgEnum, Clone)]
+pub enum ClapGC {
+    /// Spill all allocated objects
+    #[clap(name = "--spill")]
+    Spill,
+
+    /// Use atomatic reference counting
+    #[clap(name = "--arc")]
+    Arc,
 }
 
 pub fn input() -> (HashMap<PathBuf, String>, Cli) {

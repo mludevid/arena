@@ -1,6 +1,7 @@
 pub mod build_in;
 mod expression;
 mod function;
+pub mod garbage_collection;
 mod module;
 
 use llvm_sys as llvm;
@@ -10,11 +11,12 @@ use std::ptr;
 use std::rc::Rc;
 
 use crate::binary::Binary;
+use crate::codegen::garbage_collection::GC;
 
-pub fn codegen(binary: Binary, out_ll: &str, print_llvm_code: bool) {
+pub fn codegen<Gc: GC>(binary: Binary, out_ll: &str, print_llvm_code: bool) {
     let (context, builder) = llvm_setup();
 
-    let module = module::build_module(context, builder, binary);
+    let module = module::build_module::<Gc>(context, builder, binary);
 
     llvm_cleanup(context, module, builder, out_ll, print_llvm_code);
 }

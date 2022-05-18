@@ -4,6 +4,7 @@ use std::ffi::CString;
 use std::rc::Rc;
 
 use crate::binary::Binary;
+use crate::codegen::garbage_collection::GC;
 
 pub const U8_TYPE: &'static str = "u8";
 pub const I32_TYPE: &'static str = "i32";
@@ -44,7 +45,7 @@ pub fn type_to_llvm_type(
     }
 }
 
-pub fn create_structs(
+pub fn create_structs<Gc: GC>(
     binary: &Binary,
     context: *mut llvm::LLVMContext,
 ) -> HashMap<Rc<String>, *mut llvm::LLVMType> {
@@ -57,7 +58,8 @@ pub fn create_structs(
 
     for (name, t) in binary.types.iter() {
         let llvm_struct = *ret.get(name).unwrap();
-        let mut fields = vec![unsafe { llvm::core::LLVMInt32TypeInContext(context) }];
+        let mut fields = Gc::get_type_header(context);
+        fields.push(unsafe { llvm::core::LLVMInt32TypeInContext(context) });
         // First push user defined types
         for case in t.cases.iter() {
             for f in case.fields.iter() {
@@ -103,7 +105,7 @@ pub fn get_struct_size(
     }
 }
 
-pub fn get_case_id_case_indices_pointer_indices(
+pub fn get_case_id_case_indices_pointer_indices<Gc: GC>(
     context: *mut llvm::LLVMContext,
     binary: &Binary,
     llvm_structs: &HashMap<Rc<String>, *mut llvm::LLVMType>,
@@ -118,6 +120,7 @@ pub fn get_case_id_case_indices_pointer_indices(
         .types
         .get(ty)
         .expect("Could not find type def in binary");
+    let header_length = Gc::get_type_header_length();
     let mut type_pointers_count: u64 = 0;
     for c in type_def.cases.iter() {
         for field in c.fields.iter() {
@@ -137,8 +140,8 @@ pub fn get_case_id_case_indices_pointer_indices(
         Vec<u64>,
         Vec<*mut llvm::LLVMValue>,
     ) = (None, Vec::new(), Vec::new());
-    let mut non_pointer_count: u64 = type_pointers_count + 1;
-    let mut pointer_count: u64 = 1;
+    let mut pointer_count: u64 = 1 + header_length;
+    let mut non_pointer_count: u64 = type_pointers_count + pointer_count;
     for (i, c) in type_def.cases.iter().enumerate() {
         if c.name == case {
             case_index = Some(i.try_into().unwrap());
@@ -177,7 +180,7 @@ pub fn get_case_id_case_indices_pointer_indices(
 
     let int32_type = type_to_llvm_type(context, llvm_structs, &Rc::new(I32_TYPE.to_string()));
 
-    for i in 1..(type_pointers_count + 1) {
+    for i in (1 + header_length)..(type_pointers_count + 1 + header_length) {
         type_pointer_indices.push(unsafe { llvm::core::LLVMConstInt(int32_type, i, 0) });
     }
 
