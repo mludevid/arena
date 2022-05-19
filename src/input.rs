@@ -1,4 +1,4 @@
-use clap::{ArgEnum, Parser};
+use clap::Parser;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fs;
@@ -11,14 +11,23 @@ use crate::parser::parse_imports;
 
 #[derive(Parser)]
 #[clap(author, version, about)] // TODO: Add author and about to toml
+#[clap(group(
+            clap::ArgGroup::new("GC")
+                .required(false)
+                .args(&["spill", "arc"]),
+        ))]
 pub struct Cli {
     /// Path of code to be compiled
     #[clap(parse(from_os_str), value_name = "FILE")]
     pub file_path: PathBuf,
 
-    //// GC algorithm
-    #[clap(arg_enum)]
-    pub gc: Option<ClapGC>,
+    /// Spill all allocated objects
+    #[clap(long)]
+    pub spill: bool,
+
+    /// Use Automatic Reference counting
+    #[clap(long)]
+    pub arc: bool,
 
     /// Name of executable
     #[clap(short, parse(from_os_str), value_name = "file")]
@@ -43,18 +52,6 @@ pub struct Cli {
     /// Print LLVM Code
     #[clap(long)]
     pub print_llvm: bool,
-}
-
-/// GC algoriorithm used
-#[derive(ArgEnum, Clone)]
-pub enum ClapGC {
-    /// Spill all allocated objects
-    #[clap(name = "--spill")]
-    Spill,
-
-    /// Use atomatic reference counting
-    #[clap(name = "--arc")]
-    Arc,
 }
 
 pub fn input() -> (HashMap<PathBuf, String>, Cli) {

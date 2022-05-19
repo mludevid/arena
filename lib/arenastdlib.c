@@ -4,24 +4,27 @@
 
 #define SEGMENT_LEN_BITS 10 // => SEGMENT_LEN := 1024 pointers
 
-uint32_t max_stack = 0;
+// uint32_t max_stack = 0;
+
+void *alloc_new_segment(void *previous_segment) {
+    uint32_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
+    void* stack_start = aligned_alloc(segment_len, segment_len);
+    *((void**)stack_start) = previous_segment;
+}
 
 void *init_stack() {
-    uint32_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
-    // printf("STACK LEN: %d\n", segment_len);
-    void* stack_start = aligned_alloc(segment_len, segment_len);
-    *((void**)stack_start) = NULL;
-    return stack_start;
+    return alloc_new_segment(NULL);
 }
 
 void *stack_alloc(void *sp) {
     uint32_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
+    /*
     if ((((uint64_t)sp) & (segment_len - 1)) / sizeof(void*) > max_stack) {
         max_stack = (((uint64_t)sp) & (segment_len - 1)) / sizeof(void*);
     }
+    */
     if ((((uint64_t)sp) & (segment_len - 1)) == segment_len - sizeof(void*)) {
-        printf("STACK OVERFLOW!\n");
-        exit(1);
+        return alloc_new_segment(sp) + sizeof(void*);
     }
     return sp + sizeof(void*);
 }
@@ -34,20 +37,22 @@ uint32_t allocated_objects = 0;
 
 void *type_alloc(uint64_t size) {
     // printf("ALLOC\n");
-    allocated_objects += 1;
+    // allocated_objects += 1;
     return malloc(size);
 }
 
 void type_free(void *ptr) {
     // printf("FREE %x\n", ptr);
-    allocated_objects -= 1;
+    // allocated_objects -= 1;
     free(ptr);
 }
 
 void close_heap() {
+    /*
     if (allocated_objects > 0) {
         printf("%d allocated objects leaked\n", allocated_objects);
     }
+    */
 }
 
 void arc_ptr_access(void *ptr) {
