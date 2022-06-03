@@ -14,7 +14,7 @@ use crate::parser::parse_imports;
 #[clap(group(
             clap::ArgGroup::new("GC")
                 .required(false)
-                .args(&["spill", "arc"]),
+                .args(&["spill", "arc", "tgc"]),
         ))]
 pub struct Cli {
     /// Path of code to be compiled
@@ -28,6 +28,10 @@ pub struct Cli {
     /// Use Automatic Reference counting
     #[clap(long)]
     pub arc: bool,
+
+    /// Use Tracing Garbage Collection
+    #[clap(long)]
+    pub tgc: bool,
 
     /// Name of executable
     #[clap(short, parse(from_os_str), value_name = "file")]

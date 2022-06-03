@@ -47,6 +47,9 @@ enum_str!(
         close_heap,
         arc_ptr_access,
         arc_drop_ptr,
+        tgc_init_heap,
+        tgc_close_heap,
+        tgc_type_alloc,
         print_str,
         print_u8,
         print_i32,
@@ -243,7 +246,10 @@ pub fn get_build_in_func_call<Gc: GC>(
         | BuildIn::type_free
         | BuildIn::close_heap
         | BuildIn::arc_ptr_access
-        | BuildIn::arc_drop_ptr => None,
+        | BuildIn::arc_drop_ptr
+        | BuildIn::tgc_init_heap
+        | BuildIn::tgc_close_heap
+        | BuildIn::tgc_type_alloc => None,
         BuildIn::print_str => Some(create_func_call::<Gc>(
             cc,
             &Rc::new(BuildIn::printf.as_str().to_string()),
@@ -434,6 +440,9 @@ pub fn get_linked_func_signature(func_id: &Rc<String>) -> (Vec<&'static str>, &'
         BuildIn::close_heap => (Vec::new(), VOID_TYPE, false),
         BuildIn::arc_ptr_access => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
         BuildIn::arc_drop_ptr => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
+        BuildIn::tgc_init_heap => (Vec::new(), VOID_TYPE, false),
+        BuildIn::tgc_close_heap => (Vec::new(), VOID_TYPE, false),
+        BuildIn::tgc_type_alloc => (vec![I64_TYPE, VOID_PTR_TYPE], VOID_PTR_TYPE, false),
         BuildIn::char_at
         | BuildIn::print_str
         | BuildIn::print_u8

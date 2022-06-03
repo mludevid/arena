@@ -11,7 +11,7 @@ mod parser;
 mod type_check;
 mod types;
 
-use crate::codegen::garbage_collection::{Spill, ARC};
+use crate::codegen::garbage_collection::{Spill, ARC, TGC};
 
 fn main() {
     let (codes, cli) = input::input();
@@ -60,6 +60,12 @@ fn main() {
 
     if cli.spill {
         codegen::codegen::<Spill>(
+            typed_ast,
+            ll_path.to_str().unwrap(),
+            cli.verbose || cli.print_llvm,
+        )
+    } else if cli.tgc {
+        codegen::codegen::<TGC>(
             typed_ast,
             ll_path.to_str().unwrap(),
             cli.verbose || cli.print_llvm,

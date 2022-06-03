@@ -12,7 +12,17 @@ pub trait GC {
 
     fn get_type_header_length() -> u64;
 
-    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue);
+    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, size: *mut llvm::LLVMValue);
+
+    fn init_heap(cc: &CodegenContext);
+
+    fn close_heap(cc: &CodegenContext);
+
+    fn type_allocation(
+        cc: &CodegenContext,
+        size: *mut llvm::LLVMValue,
+        current_sp: *mut llvm::LLVMValue,
+    ) -> *mut llvm::LLVMValue;
 
     fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue);
 
@@ -32,7 +42,32 @@ impl GC for Spill {
     }
 
     #[allow(unused_variables)]
-    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
+    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, size: *mut llvm::LLVMValue) {}
+
+    #[allow(unused_variables)]
+    fn init_heap(cc: &CodegenContext) {}
+
+    fn close_heap(cc: &CodegenContext) {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new(BuildIn::close_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
+
+    fn type_allocation(
+        cc: &CodegenContext,
+        size: *mut llvm::LLVMValue,
+        current_sp: *mut llvm::LLVMValue,
+    ) -> *mut llvm::LLVMValue {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new("type_alloc".to_string()),
+            &mut vec![size],
+            current_sp,
+        )
+    }
 
     #[allow(unused_variables)]
     fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
@@ -52,7 +87,8 @@ impl GC for ARC {
         1
     }
 
-    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {
+    #[allow(unused_variables)]
+    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, size: *mut llvm::LLVMValue) {
         let int32_type = unsafe { llvm::core::LLVMInt32TypeInContext(cc.context) };
         let zero = unsafe { llvm::core::LLVMConstInt(int32_type, 0, 0) };
         let one = unsafe { llvm::core::LLVMConstInt(int32_type, 1, 0) };
@@ -69,51 +105,36 @@ impl GC for ARC {
         unsafe { llvm::core::LLVMBuildStore(cc.builder, one, arc_header_ptr) };
     }
 
+    #[allow(unused_variables)]
+    fn init_heap(cc: &CodegenContext) {}
+
+    fn close_heap(cc: &CodegenContext) {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new(BuildIn::close_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
+
+    fn type_allocation(
+        cc: &CodegenContext,
+        size: *mut llvm::LLVMValue,
+        current_sp: *mut llvm::LLVMValue,
+    ) -> *mut llvm::LLVMValue {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new("type_alloc".to_string()),
+            &mut vec![size],
+            current_sp,
+        )
+    }
+
     fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {
-        /*
-        let int32_type = unsafe { llvm::core::LLVMInt32TypeInContext(cc.context) };
-        let zero = unsafe { llvm::core::LLVMConstInt(int32_type, 0, 0) };
-        let one = unsafe { llvm::core::LLVMConstInt(int32_type, 1, 0) };
-        let arc_header_name = CString::new("arc_header".to_string()).unwrap();
-        let arc_header_ptr = unsafe {
-            llvm::core::LLVMBuildGEP(
-                cc.builder,
-                ptr,
-                vec![zero, zero].as_mut_ptr(),
-                2,
-                arc_header_name.as_ptr(),
-            )
-        };
         let arc_count_name = CString::new("arc_count".to_string()).unwrap();
-        let counter = unsafe {
-            llvm::core::LLVMBuildLoad(cc.builder, arc_header_ptr, arc_count_name.as_ptr())
-        };
-        let new_counter =
-            unsafe { llvm::core::LLVMBuildAdd(cc.builder, counter, one, arc_count_name.as_ptr()) };
-        create_func_call::<Self>(
-            cc,
-            &Rc::new(BuildIn::print_i32.as_str().to_string()),
-            &mut vec![new_counter],
-            std::ptr::null_mut(),
-        );
-        let ten = unsafe { llvm::core::LLVMConstInt(int32_type, 10, 0) };
-        create_func_call::<Self>(
-            cc,
-            &Rc::new(BuildIn::print_u8.as_str().to_string()),
-            &mut vec![ten],
-            std::ptr::null_mut(),
-        );
-        unsafe { llvm::core::LLVMBuildStore(cc.builder, new_counter, arc_header_ptr) };
-        */
-        let arc_count_name = CString::new("arc_count".to_string()).unwrap();
-        /*
-        let type_ptr =
-            unsafe { llvm::core::LLVMBuildLoad(cc.builder, ptr, arc_count_name.as_ptr()) };
-        */
         let heap_ptr = unsafe {
             llvm::core::LLVMBuildBitCast(
                 cc.builder,
-                // type_ptr,
                 ptr,
                 type_to_llvm_type(
                     cc.context,
@@ -152,4 +173,75 @@ impl GC for ARC {
             std::ptr::null_mut(),
         );
     }
+}
+
+pub struct TGC {}
+
+impl GC for TGC {
+    fn get_type_header(context: *mut llvm::LLVMContext) -> Vec<*mut llvm::LLVMType> {
+        vec![unsafe { llvm::core::LLVMInt32TypeInContext(context) }]
+    }
+
+    fn get_type_header_length() -> u64 {
+        1
+    }
+
+    #[allow(unused_variables)]
+    fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, size: *mut llvm::LLVMValue) {
+        let int32_type = unsafe { llvm::core::LLVMInt32TypeInContext(cc.context) };
+        let zero = unsafe { llvm::core::LLVMConstInt(int32_type, 0, 0) };
+        let tgc_header_name = CString::new("tgc_header".to_string()).unwrap();
+        let tgc_header_ptr = unsafe {
+            llvm::core::LLVMBuildGEP(
+                cc.builder,
+                ptr,
+                vec![zero, zero].as_mut_ptr(),
+                2,
+                tgc_header_name.as_ptr(),
+            )
+        };
+        let cast_name = CString::new("OBJ_SIZE".to_string()).unwrap();
+        let size_u32 = unsafe {
+            llvm::core::LLVMBuildIntCast(cc.builder, size, int32_type, cast_name.as_ptr())
+        };
+        unsafe { llvm::core::LLVMBuildStore(cc.builder, size_u32, tgc_header_ptr) };
+    }
+
+    #[allow(unused_variables)]
+    fn init_heap(cc: &CodegenContext) {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new(BuildIn::tgc_init_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
+
+    fn close_heap(cc: &CodegenContext) {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new(BuildIn::tgc_close_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
+
+    fn type_allocation(
+        cc: &CodegenContext,
+        size: *mut llvm::LLVMValue,
+        current_sp: *mut llvm::LLVMValue,
+    ) -> *mut llvm::LLVMValue {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new("tgc_type_alloc".to_string()),
+            &mut vec![size, current_sp],
+            current_sp,
+        )
+    }
+
+    #[allow(unused_variables)]
+    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
+
+    #[allow(unused_variables)]
+    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
 }

@@ -23,11 +23,9 @@ pub fn build_expression<'input, Gc: GC>(
     match &ast.expr {
         Const(c) => build_const(cc, c),
         FuncCall(func_id, params) => {
-            let mut computed_params = params
-                .into_iter()
-                .map(|param| build_expression::<Gc>(cc, current_func, vars, current_sp, &param))
-                .collect::<Vec<_>>();
-            create_func_call::<Gc>(cc, func_id, &mut computed_params, current_sp)
+            let (computed_params, stored_params, new_sp) = compute_params::<Gc>(cc, current_func, vars, current_sp, params);
+            let mut loaded_params = load_params(cc, computed_params, stored_params);
+            create_func_call::<Gc>(cc, func_id, &mut loaded_params, new_sp)
         }
         GetTypeCaseField(obj, case, field_index) => {
             let obj_ptr = build_expression::<Gc>(cc, current_func, vars, current_sp, obj);
@@ -303,6 +301,34 @@ fn build_if<'input, Gc: GC>(
     }
 }
 
+fn get_next_stack_element<Gc: GC>(
+    current_sp: *mut llvm::LLVMValue,
+    cc: &CodegenContext,
+    var_name: &CString,
+    var_type: &Rc<String>,
+) -> (*mut llvm::LLVMValue, *mut llvm::LLVMValue) {
+    let sp = create_func_call::<Gc>(
+        cc,
+        &Rc::new(stack_alloc.as_str().to_string()),
+        &mut vec![current_sp],
+        current_sp,
+    );
+    unsafe {
+        (
+            llvm::core::LLVMBuildBitCast(
+                cc.builder,
+                sp,
+                llvm::core::LLVMPointerType(
+                    type_to_llvm_type(cc.context, &cc.llvm_structs, var_type),
+                    0,
+                ),
+                var_name.as_ptr(),
+            ),
+            sp,
+        )
+    }
+}
+
 fn build_let<'input, Gc: GC>(
     cc: &CodegenContext,
     current_func: *mut llvm::LLVMValue,
@@ -321,26 +347,7 @@ fn build_let<'input, Gc: GC>(
         .expect("Could not get first char of type");
     let (variable, new_sp) = if type_first_char == '$' {
         // User defined types start with $ and go on the arena stack
-        let sp = create_func_call::<Gc>(
-            cc,
-            &Rc::new(stack_alloc.as_str().to_string()),
-            &mut vec![current_sp],
-            current_sp,
-        );
-        unsafe {
-            (
-                llvm::core::LLVMBuildBitCast(
-                    cc.builder,
-                    sp,
-                    llvm::core::LLVMPointerType(
-                        type_to_llvm_type(cc.context, &cc.llvm_structs, &def_ast.expr_type),
-                        0,
-                    ),
-                    var_name.as_ptr(),
-                ),
-                sp,
-            )
-        }
+        get_next_stack_element::<Gc>(current_sp, cc, &var_name, &def_ast.expr_type)
     } else {
         // Other types go on the regular stack
         unsafe {
@@ -382,20 +389,19 @@ fn build_type_case<'input, Gc: GC>(
     case: &'input str,
     fields: &'input Vec<TypedExpr<'input>>,
 ) -> *mut llvm::LLVMValue {
+    let (computed_params, stored_params, sp) = compute_params::<Gc>(cc, current_func, vars, current_sp, fields);
+
     let llvm_type = type_to_llvm_type(cc.context, &cc.llvm_structs, ty);
     let size = get_struct_size(&cc.llvm_structs, ty);
-    let malloc_ret = create_func_call::<Gc>(
-        cc,
-        &Rc::new("type_alloc".to_string()),
-        &mut vec![size],
-        current_sp,
-    );
+    let malloc_ret = Gc::type_allocation(cc, size, sp);
     let struct_name = CString::new(format!("{}*", ty)).unwrap();
     let heap_ptr = unsafe {
         llvm::core::LLVMBuildBitCast(cc.builder, malloc_ret, llvm_type, struct_name.as_ptr())
     };
 
-    Gc::init_header(cc, heap_ptr);
+    let fs = load_params(cc, computed_params, stored_params);
+
+    Gc::init_header(cc, heap_ptr, size);
 
     let (id, field_indices, pointer_indices) = get_case_id_case_indices_pointer_indices::<Gc>(
         cc.context,
@@ -440,8 +446,7 @@ fn build_type_case<'input, Gc: GC>(
     }
 
     // Save fields:
-    for (expr, index) in fields.iter().zip(field_indices.into_iter()) {
-        let field = build_expression::<Gc>(cc, current_func, vars, current_sp, expr);
+    for (field, index) in fs.iter().zip(field_indices.into_iter()) {
         let field_ptr = CString::new("field_ptr".to_string()).unwrap();
         unsafe {
             let ptr = llvm::core::LLVMBuildGEP(
@@ -451,9 +456,68 @@ fn build_type_case<'input, Gc: GC>(
                 2,
                 field_ptr.as_ptr(),
             );
-            llvm::core::LLVMBuildStore(cc.builder, field, ptr);
+            llvm::core::LLVMBuildStore(cc.builder, *field, ptr);
         }
     }
 
     heap_ptr
+}
+
+fn compute_params<'input, Gc: GC>(
+    cc: &CodegenContext,
+    current_func: *mut llvm::LLVMValue,
+    vars: &mut HashMap<&'input str, *mut llvm::LLVMValue>,
+    current_sp: *mut llvm::LLVMValue,
+    params: &'input Vec<TypedExpr>,
+) -> (Vec<Option<*mut llvm::LLVMValue>>, Vec<*mut llvm::LLVMValue>, *mut llvm::LLVMValue) {
+    let mut computed_params: Vec<Option<*mut llvm::LLVMValue>> = Vec::new();
+    let mut saved_params: Vec<*mut llvm::LLVMValue> = Vec::new();
+    let mut sp = current_sp;
+    for (i, param) in params.into_iter().enumerate() {
+        let computed_param = build_expression::<Gc>(cc, current_func, vars, sp, &param);
+        let type_first_char = param
+            .expr_type
+            .as_str()
+            .chars()
+            .next()
+            .expect("Could not get first char of type");
+        if type_first_char == '$' {
+            // User defined types start with $ and need to be allocated on the
+            // arena stack for the case that the next allocation leads to a
+            // garbage collection
+            let mut var_name = "$param$".to_string();
+            var_name.push_str(i.to_string().as_str());
+            let var_name_c = CString::new(var_name).unwrap();
+            let (var, new_sp) = get_next_stack_element::<Gc>(sp, cc, &var_name_c, &param.expr_type);
+            unsafe { llvm::core::LLVMBuildStore(cc.builder, computed_param, var) };
+            saved_params.push(var);
+            computed_params.push(None);
+            sp = new_sp;
+        } else {
+            computed_params.push(Some(computed_param));
+        }
+    }
+    (computed_params, saved_params, sp)
+}
+
+fn load_params(
+    cc: &CodegenContext,
+    computed_params: Vec<Option<*mut llvm::LLVMValue>>,
+    mut stored_params: Vec<*mut llvm::LLVMValue>,
+) -> Vec<*mut llvm::LLVMValue> {
+    let mut loaded_params = Vec::new();
+    for (i, param) in computed_params.into_iter().enumerate() {
+        match param {
+            None => {
+                let mut var_name = "$param$".to_string();
+                var_name.push_str(i.to_string().as_str());
+                let var_name_c = CString::new(var_name).unwrap();
+                loaded_params.push(unsafe {
+                    llvm::core::LLVMBuildLoad(cc.builder, stored_params.remove(0), var_name_c.as_ptr())
+                })
+            },
+            Some(p) => loaded_params.push(p),
+        }
+    }
+    loaded_params
 }

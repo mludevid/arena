@@ -1,5 +1,5 @@
 use crate::binary::BinFunction;
-use crate::codegen::build_in::BuildIn::{close_heap, close_stack, init_stack, stack_alloc};
+use crate::codegen::build_in::BuildIn::{close_stack, init_stack, stack_alloc};
 use crate::codegen::build_in::{get_build_in_func_call, get_linked_func_signature};
 use crate::codegen::expression::build_expression;
 use crate::codegen::garbage_collection::GC;
@@ -153,6 +153,7 @@ fn build_function<'input, Gc: GC>(
     };
     create_entry(&cc, llvm_func);
     let mut sp = if is_main {
+        Gc::init_heap(cc);
         create_func_call::<Gc>(
             cc,
             &Rc::new(init_stack.as_str().to_string()),
@@ -236,12 +237,7 @@ fn build_function<'input, Gc: GC>(
             &mut Vec::new(),
             std::ptr::null_mut(),
         );
-        create_func_call::<Gc>(
-            cc,
-            &Rc::new(close_heap.as_str().to_string()),
-            &mut Vec::new(),
-            std::ptr::null_mut(),
-        );
+        Gc::close_heap(cc);
     }
     if function.ret_type.as_str() == VOID_TYPE {
         // If the return type of the function is void it should not return the
