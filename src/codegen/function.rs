@@ -180,7 +180,7 @@ fn build_function<'input, Gc: GC>(
             let sp_ret = create_func_call::<Gc>(
                 cc,
                 &Rc::new(stack_alloc.as_str().to_string()),
-                &mut vec![sp],
+                &mut vec![sp, cc.profiling_frequency],
                 sp,
             );
             unsafe {

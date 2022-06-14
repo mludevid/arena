@@ -310,7 +310,7 @@ fn get_next_stack_element<Gc: GC>(
     let sp = create_func_call::<Gc>(
         cc,
         &Rc::new(stack_alloc.as_str().to_string()),
-        &mut vec![current_sp],
+        &mut vec![current_sp, cc.profiling_frequency],
         current_sp,
     );
     unsafe {

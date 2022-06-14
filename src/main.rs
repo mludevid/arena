@@ -58,23 +58,31 @@ fn main() {
         println!("TYPE-CHECKED AST:\n{:#?}", typed_ast);
     }
 
+    let profiling_frequency = match cli.profiling_frequency {
+        Some(i) => i,
+        None => 1,
+    };
+
     if cli.spill {
         codegen::codegen::<Spill>(
             typed_ast,
             ll_path.to_str().unwrap(),
             cli.verbose || cli.print_llvm,
+            profiling_frequency,
         )
     } else if cli.tgc {
         codegen::codegen::<TGC>(
             typed_ast,
             ll_path.to_str().unwrap(),
             cli.verbose || cli.print_llvm,
+            profiling_frequency,
         )
     } else {
         codegen::codegen::<ARC>(
             typed_ast,
             ll_path.to_str().unwrap(),
             cli.verbose || cli.print_llvm,
+            profiling_frequency,
         )
     };
 
@@ -93,11 +101,16 @@ fn main() {
             String::from_utf8_lossy(&llc_output.stderr)
         )
     }
+    let libarena_name = if cli.stack_profiling {
+        "libarena_prof_stack.a"
+    } else {
+        "libarena.a"
+    };
     let exe_path = std::env::current_exe().expect("Could not get executable path");
     let libarena_path = exe_path
         .parent()
         .expect("Could not get executable folder")
-        .join("libarena.a");
+        .join(libarena_name);
     let gcc_output = Command::new("gcc")
         .arg("-Wextra")
         .arg(s_path.to_str().unwrap())

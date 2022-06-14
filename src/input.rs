@@ -11,6 +11,7 @@ use crate::parser::parse_imports;
 
 #[derive(Parser)]
 #[clap(author, version, about)] // TODO: Add author and about to toml
+#[clap(override_usage = "arena [OPTIONS] [--arc (Default) | --tgc | --spill] <FILE>")]
 #[clap(group(
             clap::ArgGroup::new("GC")
                 .required(false)
@@ -32,6 +33,14 @@ pub struct Cli {
     /// Use Tracing Garbage Collection
     #[clap(long)]
     pub tgc: bool,
+
+    /// Enable stack profiling
+    #[clap(long)]
+    pub stack_profiling: bool,
+
+    /// Profiling Frequency to use
+    #[clap(short, long)]
+    pub profiling_frequency: Option<u64>,
 
     /// Name of executable
     #[clap(short, parse(from_os_str), value_name = "file")]

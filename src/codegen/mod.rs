@@ -13,10 +13,10 @@ use std::rc::Rc;
 use crate::binary::Binary;
 use crate::codegen::garbage_collection::GC;
 
-pub fn codegen<Gc: GC>(binary: Binary, out_ll: &str, print_llvm_code: bool) {
+pub fn codegen<Gc: GC>(binary: Binary, out_ll: &str, print_llvm_code: bool, profiling_frequency: u64) {
     let (context, builder) = llvm_setup();
 
-    let module = module::build_module::<Gc>(context, builder, binary);
+    let module = module::build_module::<Gc>(context, builder, binary, profiling_frequency);
 
     llvm_cleanup(context, module, builder, out_ll, print_llvm_code);
 }
@@ -55,4 +55,5 @@ pub struct CodegenContext<'input> {
     pub context: *mut llvm::LLVMContext,
     pub builder: *mut llvm::LLVMBuilder,
     pub llvm_structs: HashMap<Rc<String>, *mut llvm::LLVMType>,
+    pub profiling_frequency: *mut llvm::LLVMValue,
 }

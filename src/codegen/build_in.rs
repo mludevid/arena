@@ -433,7 +433,7 @@ pub fn get_linked_func_signature(func_id: &Rc<String>) -> (Vec<&'static str>, &'
         BuildIn::printf => (vec![STR_TYPE], I32_TYPE, true),
         BuildIn::exit => (vec![I32_TYPE], EXIT_TYPE, false),
         BuildIn::init_stack => (Vec::new(), VOID_PTR_TYPE, false),
-        BuildIn::stack_alloc => (vec![VOID_PTR_TYPE], VOID_PTR_TYPE, false),
+        BuildIn::stack_alloc => (vec![VOID_PTR_TYPE, I64_TYPE], VOID_PTR_TYPE, false),
         BuildIn::close_stack => (Vec::new(), VOID_TYPE, false),
         BuildIn::type_alloc => (vec![I64_TYPE], VOID_PTR_TYPE, false),
         BuildIn::type_free => (vec![VOID_PTR_TYPE], VOID_TYPE, false),

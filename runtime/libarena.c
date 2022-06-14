@@ -2,37 +2,51 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "profiling.h"
 
-#define SEGMENT_LEN_BITS 10 // => SEGMENT_LEN := 1024 pointers
+// *******************
+// ****** STACK ******
+// *******************
 
-// uint32_t max_stack = 0;
+#define SEGMENT_LEN_BITS 5 // 10 // => SEGMENT_LEN := 1024 pointers
 
 void *alloc_new_segment(void *previous_segment) {
     uint32_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
     void* stack_start = aligned_alloc(segment_len, segment_len);
     *((void**)stack_start) = previous_segment;
+    *((void**)(stack_start + segment_len - sizeof(void*))) = NULL;
+    return stack_start;
 }
 
 void *init_stack() {
+    INIT_STACK_PROFILING();
     return alloc_new_segment(NULL);
 }
 
-void *stack_alloc(void *sp) {
-    uint32_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
-    /*
-    if ((((uint64_t)sp) & (segment_len - 1)) / sizeof(void*) > max_stack) {
-        max_stack = (((uint64_t)sp) & (segment_len - 1)) / sizeof(void*);
+void *stack_alloc(void *sp, uint64_t profiling_frequency) {
+    uint64_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
+    void *ret;
+    if ((((uint64_t)sp) & (segment_len - 1)) == segment_len - 2 * sizeof(void*)) {
+        if (*((void**)(sp + sizeof(void*))) == NULL) {
+            ret = alloc_new_segment(sp) + sizeof(void*);
+            *((void**)(sp + sizeof(void*))) = ret;
+        } else {
+            ret = *((void**)(sp + sizeof(void*)));
+        }
+    } else {
+        ret = sp + sizeof(void*);
     }
-    */
-    if ((((uint64_t)sp) & (segment_len - 1)) == segment_len - sizeof(void*)) {
-        return alloc_new_segment(sp) + sizeof(void*);
-    }
-    return sp + sizeof(void*);
+    STACK_ALLOC_PROFILING(ret, segment_len, profiling_frequency);
+    return ret;
 }
 
 void close_stack() {
-    // printf("MAX STACK LEN: %d\n", max_stack);
+    CLOSE_STACK_PROFILING();
 }
+
+// *****************
+// ****** ARC ******
+// *****************
 
 // uint32_t allocated_objects = 0;
 
@@ -80,6 +94,10 @@ void arc_drop_ptr(void *ptr) {
         type_free(ptr);
     }
 }
+
+// *****************
+// ****** TGC ******
+// *****************
 
 #define NURSERY_LEN_BITS 15 // => NURSERY_LEN := 32768 bytes
 

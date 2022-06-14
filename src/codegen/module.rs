@@ -12,17 +12,20 @@ pub fn build_module<'input, Gc: GC>(
     context: *mut llvm::LLVMContext,
     builder: *mut llvm::LLVMBuilder,
     binary: Binary<'input>,
+    profiling_frequency: u64,
 ) -> *mut llvm::LLVMModule {
     unsafe {
         let module_name = CString::new("ArenaBinary").unwrap();
         let llvm_module = llvm::core::LLVMModuleCreateWithName(module_name.as_ptr());
         let llvm_structs = create_structs::<Gc>(&binary, context);
+        let profiling_frequency = llvm::core::LLVMConstInt(llvm::core::LLVMInt64TypeInContext(context), profiling_frequency, 0);
         let cc = CodegenContext {
             binary,
             llvm_module,
             context,
             builder,
             llvm_structs,
+            profiling_frequency,
         };
         let main_func = &cc
             .binary

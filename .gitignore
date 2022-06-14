@@ -4,3 +4,5 @@ doc/book
 out*
 target
 libarena.a
+libarena_prof_stack.a
+stack_profiling.json
