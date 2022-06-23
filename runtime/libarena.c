@@ -10,6 +10,8 @@
 
 #define SEGMENT_LEN_BITS 5 // 10 // => SEGMENT_LEN := 1024 pointers
 
+uint64_t PROFILING_FREQUENCY;
+
 void *alloc_new_segment(void *previous_segment) {
     uint32_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
     void* stack_start = aligned_alloc(segment_len, segment_len);
@@ -18,12 +20,13 @@ void *alloc_new_segment(void *previous_segment) {
     return stack_start;
 }
 
-void *init_stack() {
+void *init_stack(uint64_t profiling_frequency) {
+    PROFILING_FREQUENCY = profiling_frequency;
     INIT_STACK_PROFILING();
     return alloc_new_segment(NULL);
 }
 
-void *stack_alloc(void *sp, uint64_t profiling_frequency) {
+void *stack_alloc(void *sp) {
     uint64_t segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
     void *ret;
     if ((((uint64_t)sp) & (segment_len - 1)) == segment_len - 2 * sizeof(void*)) {
@@ -36,7 +39,7 @@ void *stack_alloc(void *sp, uint64_t profiling_frequency) {
     } else {
         ret = sp + sizeof(void*);
     }
-    STACK_ALLOC_PROFILING(ret, segment_len, profiling_frequency);
+    STACK_ALLOC_PROFILING(ret, segment_len, PROFILING_FREQUENCY);
     return ret;
 }
 
@@ -44,54 +47,81 @@ void close_stack() {
     CLOSE_STACK_PROFILING();
 }
 
-// *****************
-// ****** ARC ******
-// *****************
+// *************************
+// ****** SPILL / ARC ******
+// *************************
 
-// uint32_t allocated_objects = 0;
-
-void *type_alloc(uint64_t size) {
-    // printf("ALLOC\n");
-    // allocated_objects += 1;
-    return malloc(size);
+void init_heap() {
+    INIT_HEAP_PROFILING();
 }
 
-void type_free(void *ptr) {
-    // printf("FREE %x\n", ptr);
-    // allocated_objects -= 1;
+void *type_alloc(uint64_t size, void *sp) {
+    HEAP_EVENT_START_PROFILING();
+
+    void* ptr = malloc(size);
+
+    HEAP_ALLOC_PTR_PROFILING(ptr);
+    HEAP_EVENT_END_PROFILING(TYPE_ALLOC, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
+    return ptr;
+}
+
+void type_free(void *ptr, void *sp) {
+    HEAP_FREE_PTR_PROFILING(ptr);
+
     free(ptr);
 }
 
 void close_heap() {
+    CLOSE_HEAP_PROFILING();
+}
+
+// *****************
+// ****** ARC ******
+// *****************
+
+// uint64_t ptr_access_count = 0;
+void arc_ptr_access(void *ptr, void *sp) {
     /*
-    if (allocated_objects > 0) {
-        printf("%d allocated objects leaked\n", allocated_objects);
+    ptr_access_count += 1;
+    if (ptr_access_count % 10000000 == 0) {
+        printf("PTR ACCESS COUNT: %ld\n", ptr_access_count);
     }
     */
-}
 
-void arc_ptr_access(void *ptr) {
-    // printf("PTR ACCESS\n");
+    HEAP_EVENT_START_PROFILING();
     uint32_t *header = (uint32_t *)ptr;
     *header = *header + 1;
-    // printf("ARC COUNTER INCREASED %x: %u\n", header, *header);
+    HEAP_EVENT_END_PROFILING(PTR_ACCESS, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
 }
 
-void arc_drop_ptr(void *ptr) {
-    // printf("PTR DORP\n");
+void arc_drop_ptr(void *ptr, void *sp) {
+    /*
+    ptr_access_count += 1;
+    if (ptr_access_count % 10000000 == 0) {
+        printf("PTR ACCESS COUNT: %ld\n", ptr_access_count);
+    }
+    */
+
+    HEAP_EVENT_START_PROFILING();
     uint32_t *header = (uint32_t *)ptr;
     *header = *header - 1;
+    HEAP_EVENT_END_PROFILING(PTR_DROP, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
+
     if (*header == 0) {
+        HEAP_EVENT_START_PROFILING();
+
         uint32_t pointer_count = *(header + 1) >> 16;
         for (uint32_t offset = 0; offset < pointer_count; offset++) {
             void* obj_ptr = *(((void**)(header + 2)) + offset);
             if (obj_ptr != NULL) {
-                arc_drop_ptr(obj_ptr);
+                arc_drop_ptr(obj_ptr, sp);
             }
         }
 
         // free this object
-        type_free(ptr);
+        type_free(ptr, sp);
+
+        HEAP_EVENT_END_PROFILING(TYPE_FREE, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
     }
 }
 
@@ -99,7 +129,8 @@ void arc_drop_ptr(void *ptr) {
 // ****** TGC ******
 // *****************
 
-#define NURSERY_LEN_BITS 15 // => NURSERY_LEN := 32768 bytes
+// #define NURSERY_LEN_BITS 15 // => NURSERY_LEN := 32768 bytes
+#define NURSERY_LEN_BITS 13
 
 void *nursery_active;
 void *nursery_copy;
@@ -108,6 +139,8 @@ void *nursery_copy_end;
 void *nursery_pointer;
 
 void tgc_init_heap() {
+    INIT_HEAP_PROFILING();
+
     uint32_t nursery_len = (1 << NURSERY_LEN_BITS);
     nursery_active = malloc(nursery_len);
     nursery_copy = malloc(nursery_len);
@@ -164,8 +197,10 @@ void nursery_garbage_collection(void *current_sp) {
     }
 }
 
-void tgc_garbage_collection(void *sp) {
-    // printf("GARBAGE COLLECTION!\n");
+// Returns bytes freed
+uint64_t tgc_garbage_collection(void *sp) {
+    uint64_t len_before = nursery_pointer - nursery_active;
+
     nursery_pointer = nursery_copy;
     if (sp != NULL) {
         // SP == NULL for final cleanup otherwise it will be a valid pointer
@@ -177,6 +212,9 @@ void tgc_garbage_collection(void *sp) {
     tmp = nursery_active_end;
     nursery_active_end = nursery_copy_end;
     nursery_copy_end = tmp;
+
+    uint64_t len_after = nursery_pointer - nursery_active;
+    return len_before - len_after;
 }
 
 void tgc_close_heap() {
@@ -184,14 +222,26 @@ void tgc_close_heap() {
     if (nursery_active != nursery_pointer) {
         printf("NURSERY IS NOT EMPTY\n");
     }
+    CLOSE_HEAP_PROFILING();
 }
 
 void *tgc_type_alloc(uint64_t size, void *sp) {
     uint64_t padded_len = ((size + 7) / 8) * 8;
     if (nursery_pointer + padded_len >= nursery_active_end) {
-        tgc_garbage_collection(sp);
+        HEAP_EVENT_START_PROFILING();
+
+        uint64_t bytes_freed = tgc_garbage_collection(sp);
+
+        HEAP_FREE_BYTES_PROFILING(bytes_freed);
+        HEAP_EVENT_END_PROFILING(TGC, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
     }
+
+    HEAP_EVENT_START_PROFILING();
+
     void *ret = nursery_pointer;
     nursery_pointer = nursery_pointer + padded_len;
+
+    HEAP_ALLOC_BYTES_PROFILING(padded_len);
+    HEAP_EVENT_END_PROFILING(TYPE_ALLOC, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
     return ret;
 }

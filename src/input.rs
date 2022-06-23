@@ -17,6 +17,11 @@ use crate::parser::parse_imports;
                 .required(false)
                 .args(&["spill", "arc", "tgc"]),
         ))]
+#[clap(group(
+            clap::ArgGroup::new("Profiling")
+                .required(false)
+                .args(&["stack-profiling", "heap-profiling"]),
+        ))]
 pub struct Cli {
     /// Path of code to be compiled
     #[clap(parse(from_os_str), value_name = "FILE")]
@@ -37,6 +42,10 @@ pub struct Cli {
     /// Enable stack profiling
     #[clap(long)]
     pub stack_profiling: bool,
+
+    /// Enable heap profiling
+    #[clap(long)]
+    pub heap_profiling: bool,
 
     /// Profiling Frequency to use
     #[clap(short, long)]

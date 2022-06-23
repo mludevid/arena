@@ -5,4 +5,8 @@ out*
 target
 libarena.a
 libarena_prof_stack.a
+libarena_prof_heap.a
 stack_profiling.json
+heap_profiling.json
+heap_profiling_arc.json
+heap_profiling_tgc.json

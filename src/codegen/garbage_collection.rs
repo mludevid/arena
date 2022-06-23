@@ -24,9 +24,9 @@ pub trait GC {
         current_sp: *mut llvm::LLVMValue,
     ) -> *mut llvm::LLVMValue;
 
-    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue);
+    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue);
 
-    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue);
+    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue);
 }
 
 pub struct Spill {}
@@ -45,7 +45,14 @@ impl GC for Spill {
     fn init_header(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, size: *mut llvm::LLVMValue) {}
 
     #[allow(unused_variables)]
-    fn init_heap(cc: &CodegenContext) {}
+    fn init_heap(cc: &CodegenContext) {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new(BuildIn::init_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
 
     fn close_heap(cc: &CodegenContext) {
         create_func_call::<Self>(
@@ -64,16 +71,16 @@ impl GC for Spill {
         create_func_call::<Self>(
             cc,
             &Rc::new("type_alloc".to_string()),
-            &mut vec![size],
+            &mut vec![size, current_sp],
             current_sp,
         )
     }
 
     #[allow(unused_variables)]
-    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
+    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue) {}
 
     #[allow(unused_variables)]
-    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
+    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue) {}
 }
 
 pub struct ARC {}
@@ -106,7 +113,14 @@ impl GC for ARC {
     }
 
     #[allow(unused_variables)]
-    fn init_heap(cc: &CodegenContext) {}
+    fn init_heap(cc: &CodegenContext) {
+        create_func_call::<Self>(
+            cc,
+            &Rc::new(BuildIn::init_heap.as_str().to_string()),
+            &mut Vec::new(),
+            std::ptr::null_mut(),
+        );
+    }
 
     fn close_heap(cc: &CodegenContext) {
         create_func_call::<Self>(
@@ -125,12 +139,12 @@ impl GC for ARC {
         create_func_call::<Self>(
             cc,
             &Rc::new("type_alloc".to_string()),
-            &mut vec![size],
+            &mut vec![size, current_sp],
             current_sp,
         )
     }
 
-    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {
+    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue) {
         let arc_count_name = CString::new("arc_count".to_string()).unwrap();
         let heap_ptr = unsafe {
             llvm::core::LLVMBuildBitCast(
@@ -147,12 +161,12 @@ impl GC for ARC {
         create_func_call::<Self>(
             cc,
             &Rc::new(BuildIn::arc_ptr_access.as_str().to_string()),
-            &mut vec![heap_ptr],
+            &mut vec![heap_ptr, current_sp],
             std::ptr::null_mut(),
         );
     }
 
-    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {
+    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue) {
         let arc_count_name = CString::new("arc_count".to_string()).unwrap();
         let heap_ptr = unsafe {
             llvm::core::LLVMBuildBitCast(
@@ -169,7 +183,7 @@ impl GC for ARC {
         create_func_call::<Self>(
             cc,
             &Rc::new(BuildIn::arc_drop_ptr.as_str().to_string()),
-            &mut vec![heap_ptr],
+            &mut vec![heap_ptr, current_sp],
             std::ptr::null_mut(),
         );
     }
@@ -240,8 +254,8 @@ impl GC for TGC {
     }
 
     #[allow(unused_variables)]
-    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
+    fn type_ptr_access(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue) {}
 
     #[allow(unused_variables)]
-    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue) {}
+    fn type_ptr_drop(cc: &CodegenContext, ptr: *mut llvm::LLVMValue, current_sp: *mut llvm::LLVMValue) {}
 }

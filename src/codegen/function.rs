@@ -157,7 +157,7 @@ fn build_function<'input, Gc: GC>(
         create_func_call::<Gc>(
             cc,
             &Rc::new(init_stack.as_str().to_string()),
-            &mut Vec::new(),
+            &mut vec![cc.profiling_frequency],
             std::ptr::null_mut(),
         )
     } else {
@@ -180,7 +180,7 @@ fn build_function<'input, Gc: GC>(
             let sp_ret = create_func_call::<Gc>(
                 cc,
                 &Rc::new(stack_alloc.as_str().to_string()),
-                &mut vec![sp, cc.profiling_frequency],
+                &mut vec![sp],
                 sp,
             );
             unsafe {
@@ -227,7 +227,7 @@ fn build_function<'input, Gc: GC>(
             .expect("Could not get first char of param type");
         if type_first_char == '$' {
             // User defined types start with $ and go on the arena stack
-            Gc::type_ptr_drop(cc, id);
+            Gc::type_ptr_drop(cc, id, sp);
         }
     }
     if is_main {

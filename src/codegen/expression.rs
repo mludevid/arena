@@ -61,9 +61,9 @@ pub fn build_expression<'input, Gc: GC>(
                 .expect("Could not get first char of type");
             if type_first_char == '$' {
                 // User defined type:
-                Gc::type_ptr_access(cc, case_field);
+                Gc::type_ptr_access(cc, case_field, current_sp);
             }
-            Gc::type_ptr_drop(cc, obj_ptr);
+            Gc::type_ptr_drop(cc, obj_ptr, current_sp);
             case_field
         }
         If(cond, b1, b2) => {
@@ -115,7 +115,7 @@ pub fn build_expression<'input, Gc: GC>(
                     found_case_id,
                     cmp_name.as_ptr(),
                 );
-                Gc::type_ptr_drop(cc, obj_ptr);
+                Gc::type_ptr_drop(cc, obj_ptr, current_sp);
                 cmp
             }
         }
@@ -130,7 +130,7 @@ pub fn build_expression<'input, Gc: GC>(
                 .expect("Could not get first char of type");
             if type_first_char == '$' {
                 // User defined type:
-                Gc::type_ptr_drop(cc, e1_res);
+                Gc::type_ptr_drop(cc, e1_res, current_sp);
             }
             build_expression::<Gc>(cc, current_func, vars, current_sp, &e2)
         }
@@ -156,7 +156,7 @@ pub fn build_expression<'input, Gc: GC>(
                 .expect("Could not get first char of type");
             if type_first_char == '$' {
                 // User defined type:
-                Gc::type_ptr_access(cc, var);
+                Gc::type_ptr_access(cc, var, current_sp);
             }
             var
         }
@@ -310,7 +310,7 @@ fn get_next_stack_element<Gc: GC>(
     let sp = create_func_call::<Gc>(
         cc,
         &Rc::new(stack_alloc.as_str().to_string()),
-        &mut vec![current_sp, cc.profiling_frequency],
+        &mut vec![current_sp],
         current_sp,
     );
     unsafe {
@@ -371,7 +371,7 @@ fn build_let<'input, Gc: GC>(
         // let stack_ptr =
         // unsafe { llvm::core::LLVMBuildLoad(cc.builder, variable, var_name.as_ptr()) };
         let obj_ptr = unsafe { llvm::core::LLVMBuildLoad(cc.builder, variable, var_name.as_ptr()) };
-        Gc::type_ptr_drop(cc, obj_ptr);
+        Gc::type_ptr_drop(cc, obj_ptr, new_sp);
     }
     match old_def {
         None => vars.remove(&id),

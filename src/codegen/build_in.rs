@@ -42,8 +42,8 @@ enum_str!(
         init_stack,
         stack_alloc,
         close_stack,
+        init_heap,
         type_alloc,
-        type_free,
         close_heap,
         arc_ptr_access,
         arc_drop_ptr,
@@ -242,8 +242,8 @@ pub fn get_build_in_func_call<Gc: GC>(
         | BuildIn::init_stack
         | BuildIn::stack_alloc
         | BuildIn::close_stack
+        | BuildIn::init_heap
         | BuildIn::type_alloc
-        | BuildIn::type_free
         | BuildIn::close_heap
         | BuildIn::arc_ptr_access
         | BuildIn::arc_drop_ptr
@@ -432,14 +432,14 @@ pub fn get_linked_func_signature(func_id: &Rc<String>) -> (Vec<&'static str>, &'
     match BuildIn::from_str(func_id.as_str()) {
         BuildIn::printf => (vec![STR_TYPE], I32_TYPE, true),
         BuildIn::exit => (vec![I32_TYPE], EXIT_TYPE, false),
-        BuildIn::init_stack => (Vec::new(), VOID_PTR_TYPE, false),
-        BuildIn::stack_alloc => (vec![VOID_PTR_TYPE, I64_TYPE], VOID_PTR_TYPE, false),
+        BuildIn::init_stack => (vec![I64_TYPE], VOID_PTR_TYPE, false),
+        BuildIn::stack_alloc => (vec![VOID_PTR_TYPE], VOID_PTR_TYPE, false),
         BuildIn::close_stack => (Vec::new(), VOID_TYPE, false),
-        BuildIn::type_alloc => (vec![I64_TYPE], VOID_PTR_TYPE, false),
-        BuildIn::type_free => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
+        BuildIn::init_heap => (Vec::new(), VOID_TYPE, false),
+        BuildIn::type_alloc => (vec![I64_TYPE, VOID_PTR_TYPE], VOID_PTR_TYPE, false),
         BuildIn::close_heap => (Vec::new(), VOID_TYPE, false),
-        BuildIn::arc_ptr_access => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
-        BuildIn::arc_drop_ptr => (vec![VOID_PTR_TYPE], VOID_TYPE, false),
+        BuildIn::arc_ptr_access => (vec![VOID_PTR_TYPE, VOID_PTR_TYPE], VOID_TYPE, false),
+        BuildIn::arc_drop_ptr => (vec![VOID_PTR_TYPE, VOID_PTR_TYPE], VOID_TYPE, false),
         BuildIn::tgc_init_heap => (Vec::new(), VOID_TYPE, false),
         BuildIn::tgc_close_heap => (Vec::new(), VOID_TYPE, false),
         BuildIn::tgc_type_alloc => (vec![I64_TYPE, VOID_PTR_TYPE], VOID_PTR_TYPE, false),

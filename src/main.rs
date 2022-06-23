@@ -103,6 +103,8 @@ fn main() {
     }
     let libarena_name = if cli.stack_profiling {
         "libarena_prof_stack.a"
+    } else if cli.heap_profiling {
+        "libarena_prof_heap.a"
     } else {
         "libarena.a"
     };
