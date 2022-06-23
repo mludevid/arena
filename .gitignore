@@ -3,6 +3,7 @@ deploy_page.sh
 doc/book
 out*
 target
+time.time
 libarena.a
 libarena_prof_stack.a
 libarena_prof_heap.a

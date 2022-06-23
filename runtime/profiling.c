@@ -147,6 +147,23 @@ void heap_event_end_profiling(uint64_t type, void *sp, int segment_len_bits, uin
 }
 
 void close_heap_profiling() {
+    clock_t ticks = clock();
+    // CURRENT TIME INFO:
+    fprintf(fp_heap, ",\n{\"ticks\": %ld, \"seconds\": %f, ", ticks, ((double)ticks) / CLOCKS_PER_SEC);
+    // CURRENT PAUSE INFO:
+    fprintf(fp_heap, "\"total_pause_ticks\": %ld, \"total_pause_secs\": %f, ", total_pause_ticks, ((double)total_pause_ticks) / CLOCKS_PER_SEC);
+    // EVENT INFO:
+    fprintf(fp_heap, "\"type\": -1, \"duration_ticks\": 0, ");
+    // CURRENT ACCUMULATED PAUSE INFO:
+    fprintf(fp_heap, "\"total_alloc_pause_ticks\": %ld, ", total_alloc_pause_ticks);
+    fprintf(fp_heap, "\"total_free_pause_ticks\": %ld, ", total_free_pause_ticks);
+    fprintf(fp_heap, "\"total_ptr_access_pause_ticks\": %ld, ", total_ptr_access_pause_ticks);
+    fprintf(fp_heap, "\"total_ptr_drop_pause_ticks\": %ld, ", total_ptr_drop_pause_ticks);
+    fprintf(fp_heap, "\"total_tgc_pause_ticks\": %ld, ", total_tgc_pause_ticks);
+    // HEAP INFO:
+    fprintf(fp_heap, "\"total_allocated_bytes\": %ld, \"total_allocated_objects\": %ld, \"currently_allocated_bytes\": %ld, \"allocated_bytes_diff\": %ld, ", total_allocated_bytes, total_allocated_objects, currently_allocated_bytes, 0);
+    // ADDITIONAL INFO:
+    fprintf(fp_heap, "\"stack_offset\": %ld}", 0);
     fprintf(fp_heap, "\n]\n");
     fclose(fp_heap);
 }
