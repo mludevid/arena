@@ -22,7 +22,7 @@ make sure that version 10 is installed. To install it on Ubuntu you can simply
 run:
 
 ```bash
-$ sudo apt install llvm
+$ sudo apt install llvm-10
 ```
 
 You also need compilation tools from `build-essential` and the `Zlib` library.

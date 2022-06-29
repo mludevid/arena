@@ -88,12 +88,12 @@ fn main() {
 
     let mut llc_o_arg = "-o=".to_string();
     llc_o_arg.push_str(s_path.to_str().unwrap());
-    let llc_output = Command::new("llc")
+    let llc_output = Command::new("llc-10")
         .arg("--relocation-model=pic")
         .arg(llc_o_arg.as_str())
         .arg(ll_path.to_str().unwrap())
         .output()
-        .expect("Failed to execute llc");
+        .expect("Failed to execute llc-10");
     if !llc_output.status.success() {
         panic!(
             "llc failed with error code {:?}. Output:\n{}",
