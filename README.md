@@ -6,7 +6,7 @@ Arena is a natively compiled functional programming language, that is being
 developed with the intend to benchmark and compare automatic garbage collection
 algorithms.
 
-The documentation of the language can be found
+The **documentation** of the language can be found
 [here](https://mludevid.github.io/arena/).
 
 ## Installation
@@ -18,7 +18,7 @@ $ curl https://sh.rustup.rs -sSf | sh
 ```
 
 You also need a working installation of the LLVM toolchain. It is important to
-make sure that version 10 is installed. To install it on Ubuntu you can simply
+make sure that version 10 is installed. To install it on Ubuntu 20.04 LTS you can simply
 run:
 
 ```bash

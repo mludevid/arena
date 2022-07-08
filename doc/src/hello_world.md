@@ -16,3 +16,16 @@ is `out`.
 $ arena hello_word.arena
 $ ./out
 ```
+
+If you want to specify another name you can do so with the `-o` flag.
+
+```bash
+$ arena hello_word.arena -o hello
+$ ./hello
+```
+
+If you want to learn about all the other existing compiler flags you can list them with:
+
+```bash
+$ arena --help
+```

@@ -1,0 +1,26 @@
+type I32 {
+	None,
+	Some(i32),
+    EMPTY(
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32
+    ),
+}
+
+fn expect(opt: I32, err: str) -> i32 = match opt {
+    I32.None => print(err); exit(1),
+    I32.Some(i) => i,
+}
+
+fn unwrap(opt: I32) -> i32 = match opt {
+    I32.None => print("Tried to unwrap None\n"); exit(1),
+    I32.Some(i) => i,
+}

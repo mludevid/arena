@@ -19,8 +19,8 @@ This is also the first time that we see the semicolon `;`. It is compulsory
 after variable definitions as the definition itself does not return any value
 and the expression is therefore not complete yet. But it can also be used to
 concatenate two expressions. This does only make sense if the first expression
-has side effects. Pure functional languages should not have any side effects but
-the languages all end up having some mainnly through interactions with `IO`:
+has side effects. Pure functional programming languages in a mathematical sense should not have any side effects but
+all languages end up having some mainly through interactions with `IO`:
 
 ```
 fn main() =

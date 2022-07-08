@@ -8,7 +8,7 @@
 // ****** STACK ******
 // *******************
 
-#define SEGMENT_LEN_BITS 5 // 10 // => SEGMENT_LEN := 1024 pointers
+#define SEGMENT_LEN_BITS 10 // => SEGMENT_LEN := 1024 pointers
 
 uint64_t PROFILING_FREQUENCY;
 
@@ -94,6 +94,20 @@ void arc_ptr_access(void *ptr, void *sp) {
     HEAP_EVENT_END_PROFILING(PTR_ACCESS, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
 }
 
+void arc_free_obj(void *ptr, void *sp) {
+    uint32_t *header = (uint32_t *)ptr;
+    uint32_t pointer_count = *(header + 1) >> 16;
+    for (uint32_t offset = 0; offset < pointer_count; offset++) {
+        void* obj_ptr = *(((void**)(header + 2)) + offset);
+        if (obj_ptr != NULL) {
+            arc_drop_ptr(obj_ptr, sp);
+        }
+    }
+
+    // free this object
+    type_free(ptr, sp);
+}
+
 void arc_drop_ptr(void *ptr, void *sp) {
     /*
     ptr_access_count += 1;
@@ -110,16 +124,7 @@ void arc_drop_ptr(void *ptr, void *sp) {
     if (*header == 0) {
         HEAP_EVENT_START_PROFILING();
 
-        uint32_t pointer_count = *(header + 1) >> 16;
-        for (uint32_t offset = 0; offset < pointer_count; offset++) {
-            void* obj_ptr = *(((void**)(header + 2)) + offset);
-            if (obj_ptr != NULL) {
-                arc_drop_ptr(obj_ptr, sp);
-            }
-        }
-
-        // free this object
-        type_free(ptr, sp);
+        arc_free_obj(ptr, sp);
 
         HEAP_EVENT_END_PROFILING(TYPE_FREE, sp, SEGMENT_LEN_BITS, PROFILING_FREQUENCY);
     }
@@ -129,8 +134,7 @@ void arc_drop_ptr(void *ptr, void *sp) {
 // ****** TGC ******
 // *****************
 
-// #define NURSERY_LEN_BITS 15 // => NURSERY_LEN := 32768 bytes
-#define NURSERY_LEN_BITS 13
+#define NURSERY_LEN_BITS 15 // => NURSERY_LEN := 32768 bytes
 
 void *nursery_active;
 void *nursery_copy;
@@ -184,16 +188,15 @@ void *copy_object(void *obj) {
 }
 
 void nursery_garbage_collection(void *current_sp) {
-    uint32_t stack_segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
     void *sp = current_sp;
-    while ((((uint64_t)sp) & (stack_segment_len - 1)) != 0) {
-        // Update adress in stack with new address of object
-        *((void**)sp) = copy_object(*((void**)sp));
-        sp = sp - sizeof(void*);
-    }
-    void *prev_sp = *((void**) sp);
-    if (prev_sp != NULL) {
-        nursery_garbage_collection(prev_sp);
+    while (sp != NULL) {
+        uint32_t stack_segment_len = (1 << SEGMENT_LEN_BITS) * sizeof(void*);
+        while ((((uint64_t)sp) & (stack_segment_len - 1)) != 0) {
+            // Update adress in stack with new address of object
+            *((void**)sp) = copy_object(*((void**)sp));
+            sp = sp - sizeof(void*);
+        }
+        sp = *((void**) sp);
     }
 }
 

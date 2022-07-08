@@ -1,0 +1,100 @@
+import Option
+import List
+import String
+
+type Board {
+	Nil,
+	Cons(List::I32, Board),
+}
+
+fn newBoard(n: i32) -> Board = __newBoard(n, n)
+	
+fn __newBoard(n: i32, i: i32) -> Board =
+	if i == 0 then
+		Board.Nil
+	else
+		Board.Cons(List::new(n), __newBoard(n, i - 1))
+
+fn get(b: Board, row: i32, col: i32) -> Option::I32 =
+	match b {
+		Board.Nil => Option::I32.None,
+		Board.Cons(head, tail) => if row == 0 then List::get(head, col) else get(tail, row - 1, col),
+	}
+
+fn set(b: Board, row: i32, col: i32) -> Board = match b {
+	Board.Nil => Board.Nil,
+	Board.Cons(l, tail) =>
+		if row == 0 then
+			Board.Cons(List::set(l, col, 1), tail)
+		else
+			Board.Cons(l, set(tail, row - 1, col)),
+}
+
+fn len(b: Board) -> i32 =
+	match b {
+		Board.Nil => 0,
+		Board.Cons(_, tail) => 1 + len(tail),
+	}
+
+fn printSolution(board: Board) =
+	match board {
+		Board.Nil => print("\n"),
+		Board.Cons(l, m) =>
+			String::print(List::toString(l));
+			print("\n");
+			printSolution(m);
+	}
+
+fn isSafe(board: Board, row: i32, col: i32) -> bool =
+	__checkRow(board, row, col) &&
+		__checkUpperLeftDiagonal(board, row, col) &&
+		__checkLowerLeftDiagonl(board, row, col)
+
+fn __checkRow(board: Board, row: i32, col: i32) -> bool =
+	match get(board, row, col) {
+		Option::I32.None => true,
+		Option::I32.Some(i) => i != 1 && __checkRow(board, row, col - 1),
+	}
+
+fn __checkUpperLeftDiagonal(board: Board, row: i32, col: i32) -> bool =
+	match get(board, row, col) {
+		Option::I32.None => true,
+		Option::I32.Some(i) => i != 1 && __checkUpperLeftDiagonal(board, row - 1, col - 1),
+	}
+
+fn __checkLowerLeftDiagonl(board: Board, row: i32, col: i32) -> bool =
+	match get(board, row, col) {
+		Option::I32.None => true,
+		Option::I32.Some(i) => i != 1 && __checkLowerLeftDiagonl(board, row + 1, col - 1),
+	}
+
+fn solveNQUtil(board: Board, col: i32) -> i32 =
+	if col >= len(board) then
+		1
+	else
+		__solveNQUtil(board, 0, col)
+
+fn __solveNQUtil(board: Board, row: i32, col: i32) -> i32 =
+	if row < len(board) then
+		if isSafe(board, row, col) then
+			solveNQUtil(set(board, row, col), col + 1) + __solveNQUtil(board, row + 1, col)
+		else
+			__solveNQUtil(board, row + 1, col)
+	else
+		0
+
+fn solveNQ(n: i32) -> i32 =
+	let b = newBoard(n);
+	solveNQUtil(b, 0)
+
+fn increase_heap(n: i32, heap: i32) -> i32 =
+    let x = _increase_heap(heap);
+    solveNQ(n)
+
+fn _increase_heap(heap: i32) -> List::I32 =
+    if heap == 0 then List::I32.Nil else List::I32.Cons(1, _increase_heap(heap - 1))
+
+fn main() =
+	// print(solveNQ(12));
+    print(increase_heap(10, 1100));
+	print("\n");

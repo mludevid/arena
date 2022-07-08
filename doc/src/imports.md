@@ -34,3 +34,5 @@ import other_module as lib
 
 fn main() = lib::foo()
 ```
+
+If the imported file is not found relative to the current path, the compiler will search for it in two other locations: the user wide library folder: `~/.arena/lib/` and the system wide library collection in the lib subfolder of the installation directory of the arena compiler.

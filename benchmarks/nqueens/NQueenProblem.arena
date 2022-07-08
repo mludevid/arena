@@ -88,5 +88,5 @@ fn solveNQ(n: i32) -> i32 =
 	solveNQUtil(b, 0)
 
 fn main() =
-	print(solveNQ(12));
+	print(solveNQ(10));
 	print("\n");

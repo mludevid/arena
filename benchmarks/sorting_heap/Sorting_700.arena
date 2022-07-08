@@ -1,0 +1,54 @@
+type List {
+    Nil,
+    Cons(i32, List),
+}
+
+fn print(l: List) =
+    match l {
+        List.Nil => print("\n"),
+        List.Cons(h, t) => print(h); print(" "); print(t),
+    }
+
+fn sort(l: List) -> List = _sort(l, List.Nil)
+
+fn _sort(l: List, acc: List) -> List =
+    match l {
+        List.Nil => acc,
+        List.Cons(h, t) => _sort(t, _insert(h, acc)),
+    }
+
+fn _insert(elem: i32, l: List) -> List =
+    match l {
+        List.Nil => List.Cons(elem, List.Nil),
+        List.Cons(h, t) => if elem < h then
+            List.Cons(elem, l)
+        else
+            List.Cons(h, _insert(elem, t))
+    }
+
+fn descending_list(n: i32) -> List =
+    if n == 0 then
+        List.Nil
+    else
+        List.Cons(n, descending_list(n-1))
+
+fn order_list(n: i32) =
+    sort(descending_list(n));
+
+fn _do_until(n: i32, i: i32) =
+    if i == n then {0;} else {order_list(i); _do_until(n, i+1)}
+
+fn do_until(n: i32) = _do_until(n, 0)
+
+fn do_n_times(n: i32, m: i32) =
+    if n == 0 then do_until(m) else {do_until(m); do_n_times(n-1, m)}
+
+fn increase_heap(n: i32, m: i32, heap: i32) =
+    let x = _increase_heap(heap);
+    do_n_times(n, m)
+
+fn _increase_heap(heap: i32) -> List =
+    if heap == 0 then List.Nil else List.Cons(1, _increase_heap(heap - 1))
+
+fn main() = increase_heap(200, 200, 700);
+

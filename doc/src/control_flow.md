@@ -6,8 +6,8 @@ Currently there is only one control flow construct: the `if` expression:
 
 As usual for all functional programming languages all control flow constructs
 are expressions instead of statements and therefore always return a value. This
-is not different for `Arena`. We can use this construct and the knowledge
-acquired in previous chapters to calculate the 40th fibonacci number:
+is not different for `Arena`. The knowledge
+acquired in previous chapters combined with an `if` expression suffices to calculate the 40th fibonacci number:
 
 ```
 fn main() = fib(40)
@@ -27,7 +27,29 @@ Alternatively you can use the fact, that in `Arena`paranthesis can include any
 expression. This allows you to surround the block that includes a semicolon with
 paranthesis instead of surrounding both with curly brackets.
 
+Round brackets in general and curly brackets specifically for `if` expressions can also always be added precautisouly.
+
 ```
+fn print_n_times(str: String, n: i32) =
+    if n <= 1 then
+        print(str)
+    else {
+        print(str);
+        print_n_times(str, n-1)
+    }
+
+// Or:
+
+fn print_n_times(str: String, n: i32) =
+    if n <= 1 then
+        print(str)
+    else (
+        print(str);
+        print_n_times(str, n-1)
+    )
+
+// Or:
+
 fn print_n_times(str: String, n: i32) =
     if n <= 1 then {
         print(str)
@@ -35,22 +57,13 @@ fn print_n_times(str: String, n: i32) =
         print(str);
         print_n_times(str, n-1)
     }
-
-// Or:
-
-    if n <= 1 then
-        print(str)
-    else (
-        print(str);
-        print_n_times(str, n-1)
-    )
 ```
 
 ## `match` expression
 
 The `match` keyword also starts an expression and is mainly used to deconstruct
 user defined types. Each `match` expression takes an object and tries to match
-it against a set of patterns. The body of the first pattern tht succeeds will
+it against a set of patterns. The body of the first pattern that succeeds will
 be executed populating the variables defined in the pattern with the
 corresponding values. This example shows how a spaced print could be implemented for
 a linked list of words.
